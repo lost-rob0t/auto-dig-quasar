@@ -4,6 +4,7 @@ Quasar is a browser-first, offline-first StarIntel investigation workspace. It f
 
 ## Current implementation
 
+- strict TypeScript application entrypoint and package contracts
 - React and Vite application shell
 - Cytoscape investigation graph with Maltego-style selection and relationship navigation
 - PouchDB canonical local corpus
@@ -61,12 +62,35 @@ The Pages build includes `404.html` as an SPA fallback so direct document routes
 ## Development
 
 ```bash
-npm install
+npm ci
 npm run dev
 npm run check
+npm run typecheck
 npm test
+npm run test:e2e
 npm run build
 ```
+
+Node.js 22 or newer and the committed npm lockfile define the reproducible
+toolchain. `npm run check` includes strict TypeScript validation plus syntax
+checks for the static service-worker runtime.
+
+The TypeScript package entrypoints establish the intended dependency areas:
+
+```text
+src/app
+src/core
+src/storage
+src/graph
+src/actions
+src/projections
+src/components
+src/testing
+```
+
+Existing JavaScript feature modules remain available behind those entrypoints
+while they are migrated incrementally; new package contracts and the browser
+entrypoint are type-checked with `strict: true`.
 
 The application pins the tested v0.9 runtime commit from `starintel_doc.js`:
 
