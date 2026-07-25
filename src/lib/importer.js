@@ -6,16 +6,18 @@ function extension(name) {
 
 function parseJsonLines(text, sourceName) {
   const documents = [];
+  const origins = [];
   const errors = [];
   text.split(/\r?\n/).forEach((line, index) => {
     if (!line.trim()) return;
     try {
       documents.push(JSON.parse(line));
+      origins.push({ file: sourceName, line: index + 1, record: index + 1 });
     } catch (error) {
       errors.push({ file: sourceName, line: index + 1, message: error.message });
     }
   });
-  return { documents, errors };
+  return { documents, origins, errors };
 }
 
 function parseCsvLine(line) {
@@ -40,9 +42,10 @@ function parseCsvLine(line) {
 
 function parseCsv(text, sourceName) {
   const lines = text.split(/\r?\n/).filter((line) => line.trim());
-  if (!lines.length) return { documents: [], errors: [] };
+  if (!lines.length) return { documents: [], origins: [], errors: [] };
   const headers = parseCsvLine(lines[0]).map((header) => header.trim());
   const documents = [];
+  const origins = [];
   const errors = [];
 
   lines.slice(1).forEach((line, rowIndex) => {
@@ -66,11 +69,12 @@ function parseCsv(text, sourceName) {
         evidence: raw.evidence ? JSON.parse(raw.evidence) : [],
         data
       });
+      origins.push({ file: sourceName, line: rowIndex + 2, record: rowIndex + 1 });
     } catch (error) {
       errors.push({ file: sourceName, line: rowIndex + 2, message: error.message });
     }
   });
-  return { documents, errors };
+  return { documents, origins, errors };
 }
 
 function unwrapJson(value) {
@@ -86,9 +90,14 @@ async function parseFile(file) {
   if (["jsonl", "ndjson"].includes(kind)) return parseJsonLines(text, file.name);
   if (kind === "csv") return parseCsv(text, file.name);
   try {
-    return { documents: unwrapJson(JSON.parse(text)), errors: [] };
+    const documents = unwrapJson(JSON.parse(text));
+    return {
+      documents,
+      origins: documents.map((_, index) => ({ file: file.name, record: index + 1 })),
+      errors: []
+    };
   } catch (error) {
-    return { documents: [], errors: [{ file: file.name, message: error.message }] };
+    return { documents: [], origins: [], errors: [{ file: file.name, message: error.message }] };
   }
 }
 
@@ -108,18 +117,20 @@ export async function collectImportDocuments(fileList) {
 
   for (const file of files) {
     const result = await parseFile(file);
-    parsed.set(file.name, result.documents);
+    parsed.set(file.name, result);
     errors.push(...result.errors);
   }
 
   const documents = [];
+  const origins = [];
   const includedFiles = new Set();
   const include = (name) => {
     if (includedFiles.has(name)) return;
     includedFiles.add(name);
-    const values = parsed.get(name) || [];
-    documents.push(...values);
-    for (const document of values) {
+    const result = parsed.get(name) || { documents: [], origins: [] };
+    documents.push(...result.documents);
+    origins.push(...result.origins);
+    for (const document of result.documents) {
       for (const reference of manifestReferences(document)) {
         const candidate = byName.has(reference) ? reference : [...byName.keys()].find((key) => key.endsWith(`/${reference}`));
         if (candidate) include(candidate);
@@ -129,26 +140,59 @@ export async function collectImportDocuments(fileList) {
   };
 
   files.forEach((file) => include(file.name));
-  return { documents, errors, files: [...includedFiles] };
+  return { documents, origins, errors, files: [...includedFiles] };
 }
 
 export async function importFiles(fileList, saveBatch, options = {}) {
   const collected = await collectImportDocuments(fileList);
-  const obviousInvalid = collected.documents
-    .map((document, index) => ({ document, index }))
+  const records = collected.documents.map((document, index) => ({
+    document,
+    origin: collected.origins[index] || { record: index + 1 },
+    index
+  }));
+  const obviousInvalid = records
     .filter(({ document }) => !document || typeof document !== "object");
-  const candidates = collected.documents.filter((document) => document && typeof document === "object");
-  const result = await saveBatch(candidates, options);
-  return {
-    ...result,
-    parseErrors: [
-      ...collected.errors,
-      ...obviousInvalid.map(({ index }) => ({ message: `record ${index + 1} is not an object` }))
-    ],
+  const candidateRecords = records.filter(({ document }) => document && typeof document === "object");
+  const candidates = candidateRecords.map(({ document }) => document);
+  const origins = candidateRecords.map(({ origin }) => origin);
+  const parseErrors = [
+    ...collected.errors,
+    ...obviousInvalid.map(({ index, origin }) => ({
+      ...origin,
+      message: `record ${origin.record || index + 1} is not an object`
+    }))
+  ];
+  const summary = {
+    parseErrors,
     fileCount: collected.files.length,
     candidateCount: candidates.length,
     recognizedCount: candidates.filter(isStarIntelDocument).length
   };
+  const decorate = (report = {}) => ({
+    saved: [],
+    skipped: [],
+    errors: [],
+    ...report,
+    ...summary,
+    importedIds: (report.saved || []).map((item) => item.id),
+    savedCount: (report.saved || []).length,
+    skippedCount: (report.skipped || []).length,
+    errorCount: (report.errors || []).length,
+    parseErrorCount: parseErrors.length
+  });
+
+  if (options.atomic !== false && parseErrors.length) {
+    const error = new Error(`Atomic import rejected ${parseErrors.length} parse error(s)`);
+    error.report = decorate({ atomic: true, rejected: true });
+    throw error;
+  }
+
+  try {
+    return decorate(await saveBatch(candidates, { ...options, origins }));
+  } catch (error) {
+    error.report = decorate(error.report);
+    throw error;
+  }
 }
 
 export function documentsToJsonl(documents) {

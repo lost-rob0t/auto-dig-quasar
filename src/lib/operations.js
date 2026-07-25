@@ -1,4 +1,5 @@
 import { bulkSaveDocuments, getDocument, removeDocument, saveDocument } from "./db";
+import { validateDocumentBatch } from "./document-batch";
 
 export const operation = Object.freeze({
   save(document) {
@@ -50,24 +51,46 @@ export async function applyOperation(command) {
   throw new TypeError(`Unknown operation type: ${command.type}`);
 }
 
-export async function saveDocumentBatch(documents, label = "Save documents", { replace = true } = {}) {
-  const previous = new Map();
-  for (const document of documents) previous.set(document._id, await getDocument(document._id));
-  const report = await bulkSaveDocuments(documents, { replace });
-  if (report.errors.length) {
+export async function saveDocumentBatch(documents, label = "Save documents", {
+  replace = true,
+  atomic = true,
+  origins = []
+} = {}) {
+  const preflight = validateDocumentBatch(documents, { origins });
+  if (atomic && preflight.errors.length) {
+    const report = { saved: [], skipped: [], errors: preflight.errors, atomic, rolledBack: 0 };
     const error = new Error(`Batch rejected ${report.errors.length} document(s)`);
     error.report = report;
     throw error;
   }
+
+  const normalizedDocuments = preflight.validated.map(({ document }) => document);
+  const previous = new Map();
+  for (const { document } of preflight.validated) {
+    previous.set(document._id, await getDocument(document._id));
+  }
+  const report = await bulkSaveDocuments(documents, {
+    replace,
+    atomic,
+    origins,
+    prepared: preflight
+  });
   const savedIds = new Set(report.saved.map((item) => item.id));
-  const savedDocuments = documents.filter((document) => savedIds.has(document._id));
+  const savedDocuments = normalizedDocuments.filter((document) => savedIds.has(document._id));
   const inverse = savedDocuments.map((document) => {
     const old = previous.get(document._id);
     return old ? operation.save(old) : operation.remove(document._id);
   }).reverse();
-  return {
+  const applied = {
     result: report,
     savedDocuments,
     inverse: inverse.length ? operation.batch(inverse, `Undo ${label}`) : null
   };
+  if (report.errors.length) {
+    const error = new Error(`Batch rejected ${report.errors.length} document(s)`);
+    error.report = report;
+    error.applied = applied;
+    throw error;
+  }
+  return applied;
 }

@@ -1,5 +1,6 @@
 import PouchDB from "pouchdb-browser";
 import { assertDocument, isStarIntelDocument } from "starintel_doc";
+import { commitDocumentBatch } from "./document-batch";
 
 export const documentsDb = new PouchDB("quasar-starintel-v09", { auto_compaction: true });
 export const stateDb = new PouchDB("quasar-ui-state-v1", { auto_compaction: true });
@@ -39,50 +40,8 @@ export async function saveDocument(input, { replace = true } = {}) {
   return { ...document, _rev: result.rev };
 }
 
-function incomingWins(incoming, existing, replace) {
-  if (replace) return true;
-  const incomingVersion = Number(incoming.version || 0);
-  const existingVersion = Number(existing.version || 0);
-  if (incomingVersion !== existingVersion) return incomingVersion > existingVersion;
-  return String(incoming.date_updated || "") > String(existing.date_updated || "");
-}
-
-export async function bulkSaveDocuments(inputs, { replace = false } = {}) {
-  const validated = [];
-  const errors = [];
-  for (let index = 0; index < inputs.length; index += 1) {
-    try {
-      validated.push({ index, document: assertDocument(inputs[index]) });
-    } catch (error) {
-      errors.push({ index, id: inputs[index]?._id || null, message: error.message, validation: error.errors || [] });
-    }
-  }
-
-  const keys = validated.map(({ document }) => document._id);
-  const existingRows = keys.length ? await documentsDb.allDocs({ keys, include_docs: true }) : { rows: [] };
-  const existing = new Map(existingRows.rows.filter((row) => row.doc).map((row) => [row.id, row.doc]));
-  const writes = [];
-  const skipped = [];
-
-  for (const item of validated) {
-    const current = existing.get(item.document._id);
-    if (current && !incomingWins(item.document, current, replace)) {
-      skipped.push({ index: item.index, id: item.document._id, reason: "existing document is newer or equal" });
-      continue;
-    }
-    if (current) item.document._rev = current._rev;
-    else delete item.document._rev;
-    writes.push(item);
-  }
-
-  const results = writes.length ? await documentsDb.bulkDocs(writes.map(({ document }) => document)) : [];
-  const saved = [];
-  results.forEach((result, position) => {
-    const item = writes[position];
-    if (result.ok) saved.push({ index: item.index, id: result.id, rev: result.rev });
-    else errors.push({ index: item.index, id: result.id, message: result.message || result.error });
-  });
-  return { saved, skipped, errors };
+export function bulkSaveDocuments(inputs, options = {}) {
+  return commitDocumentBatch(documentsDb, inputs, options);
 }
 
 export async function removeDocument(id) {

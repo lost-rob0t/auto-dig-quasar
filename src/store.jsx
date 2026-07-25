@@ -99,18 +99,38 @@ export function QuasarProvider({ children }) {
   }, [history.redo, refresh]);
 
   const importFileSet = useCallback(async (files, options = {}) => {
-    const report = await importFiles(files, async (candidates, importOptions) => {
-      const label = `Import ${candidates.length} documents`;
-      const applied = await saveDocumentBatch(candidates, label, { replace: Boolean(importOptions.replace) });
-      record({
-        label,
-        inverse: applied.inverse,
-        redo: operation.batch(applied.savedDocuments.map(operation.save), "Redo import")
-      });
-      return applied.result;
-    }, options);
-    await refresh();
-    return report;
+    try {
+      const report = await importFiles(files, async (candidates, importOptions) => {
+        const label = `Import ${candidates.length} documents`;
+        try {
+          const applied = await saveDocumentBatch(candidates, label, {
+            replace: Boolean(importOptions.replace),
+            atomic: importOptions.atomic !== false,
+            origins: importOptions.origins || []
+          });
+          record({
+            label,
+            inverse: applied.inverse,
+            redo: operation.batch(applied.savedDocuments.map(operation.save), "Redo import")
+          });
+          return applied.result;
+        } catch (error) {
+          if (error.applied?.inverse) {
+            record({
+              label,
+              inverse: error.applied.inverse,
+              redo: operation.batch(error.applied.savedDocuments.map(operation.save), "Redo import")
+            });
+          }
+          throw error;
+        }
+      }, { atomic: true, ...options });
+      await refresh();
+      return report;
+    } catch (error) {
+      await refresh();
+      throw error;
+    }
   }, [record, refresh]);
 
   const persistSettings = useCallback(async (next) => {
