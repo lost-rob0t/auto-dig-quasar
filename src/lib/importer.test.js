@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { collectImportDocuments, documentsToJsonl, importFiles } from "./importer";
+import { validateDocumentBatch } from "./document-batch";
 
 function file(name, text) {
   return { name, size: text.length, text: async () => text };
@@ -18,6 +19,37 @@ const document = {
   evidence: [],
   data: { name: "Test" }
 };
+
+const relation = {
+  ...document,
+  _id: "starintel:relation:subsidiary",
+  dtype: "relation",
+  data: {
+    subject: "starintel:org:subsidiary",
+    predicate: "subsidiary-of",
+    object: "starintel:org:parent",
+    source: "starintel:org:subsidiary",
+    target: "starintel:org:parent",
+    directed: true,
+    inverse_predicate: "parent-of",
+    confidence: 0.7,
+    active: true,
+    note: "Imported from Parent Company column."
+  }
+};
+
+async function validateAndSave(candidates, options) {
+  const preflight = validateDocumentBatch(candidates, { origins: options.origins });
+  return {
+    saved: preflight.validated.map(({ index, document: candidate }) => ({
+      index,
+      id: candidate._id,
+      rev: `1-${index}`
+    })),
+    skipped: [],
+    errors: preflight.errors
+  };
+}
 
 describe("browser imports", () => {
   it("parses JSONL", async () => {
@@ -90,5 +122,42 @@ describe("browser imports", () => {
 
     expect(result.importedIds).toEqual([document._id]);
     expect(saveBatch.mock.calls[0][1].origins).toEqual([{ file: "records.json", record: 1 }]);
+  });
+
+  it("accepts the canonical relation shape rejected by the stale deployed validator", async () => {
+    const result = await importFiles([
+      file("relation.json", JSON.stringify(relation))
+    ], validateAndSave);
+
+    expect(result.errors).toEqual([]);
+    expect(result.importedIds).toEqual([relation._id]);
+    expect(result.validator).toMatchObject({
+      schemaVersion: "0.9.0",
+      profile: "starintel-core"
+    });
+  });
+
+  it("validates endpoint and relation records together in one JSONL batch", async () => {
+    const endpointA = { ...document, _id: relation.data.subject, data: { name: "Subsidiary" } };
+    const endpointB = { ...document, _id: relation.data.object, data: { name: "Parent" } };
+    const reverseRelation = {
+      ...relation,
+      _id: "starintel:relation:parent",
+      data: {
+        ...relation.data,
+        subject: endpointB._id,
+        predicate: "parent-of",
+        object: endpointA._id,
+        inverse_predicate: "subsidiary-of"
+      }
+    };
+    const records = [endpointA, endpointB, relation, reverseRelation];
+    const result = await importFiles([
+      file("relations.jsonl", `${records.map((record) => JSON.stringify(record)).join("\n")}\n`)
+    ], validateAndSave);
+
+    expect(result.errors).toEqual([]);
+    expect(result.saved).toHaveLength(4);
+    expect(result.importedIds).toEqual(records.map((record) => record._id));
   });
 });

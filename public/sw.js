@@ -1,14 +1,18 @@
-const CACHE = "quasar-runtime-v1";
-const APP_SHELL = ["./", "./index.html", "./manifest.webmanifest"];
+import {
+  APP_SHELL,
+  CACHE_NAME,
+  cacheFirstAsset,
+  networkFirstNavigation
+} from "./sw-runtime.js";
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(APP_SHELL)).then(() => self.skipWaiting()));
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)).then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))))
+      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
       .then(() => self.clients.claim())
   );
 });
@@ -19,14 +23,8 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
 
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      const network = fetch(event.request)
-        .then((response) => {
-          if (response.ok) caches.open(CACHE).then((cache) => cache.put(event.request, response.clone()));
-          return response;
-        })
-        .catch(() => cached || (event.request.mode === "navigate" ? caches.match("./index.html") : undefined));
-      return cached || network;
-    })
+    event.request.mode === "navigate"
+      ? networkFirstNavigation(event.request)
+      : cacheFirstAsset(event.request)
   );
 });

@@ -18,6 +18,8 @@ export function Report({ report }) {
         <div className="key-value"><span>Invalid/write errors</span><strong>{report.errors?.length || 0}</strong></div>
         <div className="key-value"><span>Parse errors</span><strong>{report.parseErrors?.length || 0}</strong></div>
         <div className="key-value"><span>Rolled back</span><strong>{report.rolledBack || 0}</strong></div>
+        <div className="key-value"><span>Schema revision</span><strong>{report.validator?.schemaRevision || "unknown"}</strong></div>
+        <div className="key-value"><span>Validator profile</span><strong>{report.validator ? `${report.validator.profile} ${report.validator.profileVersion}` : "unknown"}</strong></div>
       </div>
       {[...(report.parseErrors || []), ...(report.errors || [])].map((error, index) => (
         <div className="validation-error" key={`${error.file || error.id || "error"}:${index}`}>

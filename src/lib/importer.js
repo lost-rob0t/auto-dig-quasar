@@ -1,4 +1,19 @@
-import { isStarIntelDocument } from "starintel_doc";
+import {
+  isStarIntelDocument,
+  SCHEMA_PROFILE,
+  SCHEMA_PROFILE_VERSION,
+  SCHEMA_REVISION,
+  SCHEMA_URI,
+  SCHEMA_VERSION
+} from "starintel_doc";
+
+export const validatorInfo = Object.freeze({
+  schemaVersion: SCHEMA_VERSION,
+  schemaRevision: SCHEMA_REVISION,
+  schemaUri: SCHEMA_URI,
+  profile: SCHEMA_PROFILE,
+  profileVersion: SCHEMA_PROFILE_VERSION
+});
 
 function extension(name) {
   return String(name || "").toLowerCase().split(".").pop();
@@ -174,6 +189,7 @@ export async function importFiles(fileList, saveBatch, options = {}) {
     errors: [],
     ...report,
     ...summary,
+    validator: validatorInfo,
     importedIds: (report.saved || []).map((item) => item.id),
     savedCount: (report.saved || []).length,
     skippedCount: (report.skipped || []).length,

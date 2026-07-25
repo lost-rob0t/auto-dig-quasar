@@ -13,6 +13,11 @@ describe("import report", () => {
       saved: [],
       skipped: [],
       rolledBack: 0,
+      validator: {
+        schemaRevision: "0.9.0+fields.20260725.1",
+        profile: "starintel-core",
+        profileVersion: "0.9"
+      },
       parseErrors: [],
       errors: [{
         file: "records.jsonl",
@@ -33,5 +38,7 @@ describe("import report", () => {
     expect(html).toContain("starintel:relation:invalid");
     expect(html).toContain("/data [required]");
     expect(html).toContain("Invalid/write errors");
+    expect(html).toContain("0.9.0+fields.20260725.1");
+    expect(html).toContain("starintel-core 0.9");
   });
 });
