@@ -103,13 +103,18 @@ function endpointIds(value) {
   return id ? [id] : [];
 }
 
+export function normalizeDirected(value) {
+  if (value === false || value === "false") return false;
+  return true;
+}
+
 function relationParts(document) {
   const data = document.data || {};
   return {
     subjects: endpointIds(data.subject || data.source),
     objects: endpointIds(data.object || data.target),
     predicate: data.predicate || data.relation_type || document.title || "related-to",
-    directed: data.directed !== false,
+    directed: normalizeDirected(data.directed),
     confidence: data.confidence ?? document.assessment?.confidence ?? null
   };
 }

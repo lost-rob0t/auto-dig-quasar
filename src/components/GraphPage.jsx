@@ -4,56 +4,9 @@ import { ArrowLeft, Database, ExternalLink, Focus, Link2, Network, Play, Plus, S
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { assertDocument, createDocument, createRelation, dtypes, documentLabel } from "starintel_doc";
 import { buildGraph, filterGraph, findPaths, importedGraphNodeIds, partitionDocumentsByReview } from "../lib/graph";
+import { GRAPH_STYLE } from "../lib/graph-style";
 import { operation } from "../lib/operations";
 import { useQuasar } from "../store";
-
-const GRAPH_STYLE = [
-  {
-    selector: "node",
-    style: {
-      "background-color": "data(color)",
-      shape: "data(shape)",
-      label: "data(label)",
-      color: "#e5eef9",
-      "font-size": 11,
-      "font-weight": 600,
-      "text-wrap": "ellipsis",
-      "text-max-width": 130,
-      "text-valign": "bottom",
-      "text-margin-y": 8,
-      width: 38,
-      height: 38,
-      "border-width": 2,
-      "border-color": "#07111f",
-      "overlay-padding": 8
-    }
-  },
-  { selector: "node[?unresolved]", style: { "border-style": "dashed", opacity: 0.72 } },
-  { selector: "node:selected", style: { "border-color": "#f8fafc", "border-width": 4, "underlay-color": "#38bdf8", "underlay-opacity": 0.18, "underlay-padding": 10 } },
-  { selector: "node.path", style: { "border-color": "#f59e0b", "border-width": 5 } },
-  {
-    selector: "edge",
-    style: {
-      width: 1.5,
-      "line-color": "#46617f",
-      "target-arrow-color": "#46617f",
-      "target-arrow-shape": "triangle",
-      "curve-style": "bezier",
-      label: "data(label)",
-      color: "#8fa5bc",
-      "font-size": 8,
-      "text-background-color": "#07111f",
-      "text-background-opacity": 0.85,
-      "text-background-padding": 2,
-      "text-rotation": "autorotate",
-      "arrow-scale": 0.75
-    }
-  },
-  { selector: "edge[directed = false]", style: { "target-arrow-shape": "none" } },
-  { selector: "edge:selected", style: { width: 3, "line-color": "#38bdf8", "target-arrow-color": "#38bdf8" } },
-  { selector: "edge.path", style: { width: 4, "line-color": "#f59e0b", "target-arrow-color": "#f59e0b", "z-index": 20 } },
-  { selector: ".labels-hidden", style: { label: "" } }
-];
 
 function GraphCanvas({ graph, layout, selectedIds, onSelection, onMove, onViewport, apiRef, labels }) {
   const containerRef = useRef(null);
@@ -68,7 +21,6 @@ function GraphCanvas({ graph, layout, selectedIds, onSelection, onMove, onViewpo
       style: GRAPH_STYLE,
       minZoom: 0.05,
       maxZoom: 6,
-      wheelSensitivity: 0.18,
       selectionType: "additive",
       boxSelectionEnabled: true
     });

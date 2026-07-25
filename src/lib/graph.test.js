@@ -5,6 +5,7 @@ import {
   findPaths,
   graphStatistics,
   importedGraphNodeIds,
+  normalizeDirected,
   partitionDocumentsByReview,
   reviewState
 } from "./graph";
@@ -47,6 +48,20 @@ describe("StarIntel graph projection", () => {
     expect(graph.edges).toHaveLength(2);
     expect(graph.edges[0].data.predicate).toBe("founded");
     expect(graph.nodes[0].data.reviewState).toBe("reviewed");
+  });
+
+  it("projects every relation direction as a boolean with directed as the legacy default", () => {
+    const relations = [
+      base("starintel:relation:true", "relation", { subject: "starintel:person:a", predicate: "a", object: "starintel:org:b", directed: true }),
+      base("starintel:relation:false", "relation", { subject: "starintel:person:a", predicate: "b", object: "starintel:org:b", directed: false }),
+      base("starintel:relation:legacy-false", "relation", { subject: "starintel:person:a", predicate: "c", object: "starintel:org:b", directed: "false" }),
+      base("starintel:relation:missing", "relation", { subject: "starintel:person:a", predicate: "d", object: "starintel:org:b" })
+    ];
+    const graph = buildGraph([...documents.slice(0, 3), ...relations]);
+
+    expect(graph.edges.map((edge) => edge.data.directed)).toEqual([true, false, false, true]);
+    expect(graph.edges.every((edge) => typeof edge.data.directed === "boolean")).toBe(true);
+    expect(normalizeDirected("invalid-legacy-value")).toBe(true);
   });
 
   it("retains unresolved relation endpoints", () => {
