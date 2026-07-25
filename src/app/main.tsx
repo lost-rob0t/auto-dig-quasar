@@ -1,15 +1,20 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
-import App from "./App";
-import { QuasarProvider } from "./store";
-import { registerServiceWorker } from "./lib/service-worker-registration";
-import "./styles.css";
-import "./dashboard.css";
+import App from "../App.jsx";
+import { QuasarProvider } from "../store.jsx";
+import { registerServiceWorker } from "../lib/service-worker-registration.js";
+import "../styles.css";
+import "../dashboard.css";
 
 const base = import.meta.env.BASE_URL.replace(/\/$/, "") || "/";
+const rootElement = document.getElementById("root");
 
-createRoot(document.getElementById("root")).render(
+if (!rootElement) {
+  throw new Error("Quasar root element was not found");
+}
+
+createRoot(rootElement).render(
   <StrictMode>
     <BrowserRouter basename={base === "/" ? undefined : base}>
       <QuasarProvider>
