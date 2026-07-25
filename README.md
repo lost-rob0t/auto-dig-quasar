@@ -71,10 +71,10 @@ npm run build
 The application pins the tested v0.9 runtime commit from `starintel_doc.js`:
 
 ```text
-github:lost-rob0t/starintel_doc.js#f4ba14086b76fa43a11c9e864e6c209f630916bd
+github:lost-rob0t/starintel_doc.js#108310c1bcee403cb7e40dabfd3547a6b5228c51
 ```
 
-Switch it to the released package or merged default branch after the specification PR lands.
+The dependency and this documented revision must stay aligned so import diagnostics identify the validator actually bundled into the application.
 
 ## Import conventions
 
@@ -84,6 +84,8 @@ Switch it to the released package or merged default branch after the specificati
 - manifests: select the manifest and referenced files in the same bulk file picker
 
 Imports are atomic by default: every candidate and duplicate ID is checked before PouchDB writes. A failed PouchDB bulk result triggers compensating rollback, and the report preserves file, record, validation-path, and write-phase details. Existing IDs are replaced only when explicitly requested or when the incoming version/date is newer.
+
+Import reports also show the active `starintel_doc` schema revision and profile. Production navigation is network-first, while content-hashed assets remain cache-first; service-worker update checks bypass the HTTP cache and replace an obsolete application shell on reload.
 
 ## Browser actors
 
