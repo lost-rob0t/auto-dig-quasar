@@ -242,6 +242,21 @@ export function filterGraph(graph, queryOrFilters = "", legacyDtype = "") {
   return { nodes, edges, elements: [...nodes, ...edges] };
 }
 
+export function importedGraphNodeIds(graph, importedIds = []) {
+  const imported = new Set(importedIds);
+  const focused = new Set(
+    graph.nodes
+      .map((node) => node.data.id)
+      .filter((id) => imported.has(id))
+  );
+  for (const edge of graph.edges) {
+    if (!imported.has(edge.data.relationId)) continue;
+    focused.add(edge.data.source);
+    focused.add(edge.data.target);
+  }
+  return [...focused];
+}
+
 export function graphStatistics(documents, graph = null) {
   const { reviewed, unreviewed } = partitionDocumentsByReview(documents);
   const reviewedGraph = graph || buildGraph(reviewed);

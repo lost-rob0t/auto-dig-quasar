@@ -15,6 +15,7 @@ import {
 import { importFiles } from "./lib/importer";
 import { applyOperation, operation, saveDocumentBatch } from "./lib/operations";
 import { BUILTIN_ACTORS, actorApplicable, runBrowserActor } from "./lib/actors";
+import { startDocumentSource } from "./lib/document-source";
 
 const QuasarContext = createContext(null);
 
@@ -34,24 +35,28 @@ export function QuasarProvider({ children }) {
 
   useEffect(() => {
     let active = true;
-    Promise.all([listDocuments(), getSettings(), getWorkspace()])
-      .then(([nextDocuments, nextSettings, nextWorkspace]) => {
+    const source = startDocumentSource({
+      load: listDocuments,
+      watch: watchDocuments,
+      onDocuments: (nextDocuments) => setDocuments(nextDocuments),
+      onError: (error) => setNotice({ kind: "error", message: error.message })
+    });
+    Promise.all([source.initial, getSettings(), getWorkspace()])
+      .then(([, nextSettings, nextWorkspace]) => {
         if (!active) return;
-        setDocuments(nextDocuments);
         setSettings(nextSettings);
         setWorkspace(nextWorkspace);
         setSelectedIds(nextWorkspace.selectedIds || []);
       })
       .catch((error) => setNotice({ kind: "error", message: error.message }))
       .finally(() => active && setLoading(false));
-    const stop = watchDocuments(() => refresh().catch(() => {}));
     return () => {
       active = false;
-      stop();
+      source.stop();
       syncRef.current?.cancel?.();
       clearTimeout(workspaceTimer.current);
     };
-  }, [refresh]);
+  }, []);
 
   const record = useCallback((entry) => {
     if (!entry?.inverse) return;

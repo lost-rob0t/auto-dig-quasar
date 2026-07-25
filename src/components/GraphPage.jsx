@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import cytoscape from "cytoscape";
-import { ArrowLeft, ExternalLink, Focus, Link2, Network, Play, Plus, Search, TriangleAlert, X } from "lucide-react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { ArrowLeft, Database, ExternalLink, Focus, Link2, Network, Play, Plus, Search, TriangleAlert, X } from "lucide-react";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { assertDocument, createDocument, createRelation, dtypes, documentLabel } from "starintel_doc";
-import { buildGraph, filterGraph, findPaths, partitionDocumentsByReview } from "../lib/graph";
+import { buildGraph, filterGraph, findPaths, importedGraphNodeIds, partitionDocumentsByReview } from "../lib/graph";
 import { operation } from "../lib/operations";
 import { useQuasar } from "../store";
 
@@ -217,16 +217,22 @@ function RelationAdd({ ids, documents, onClose }) {
 
 export default function GraphPage() {
   const [params] = useSearchParams();
+  const location = useLocation();
   const {
     documents, workspace, selectedIds, selectedDocuments, select, persistWorkspace,
     actors, runActor, settings, setNotice
   } = useQuasar();
   const apiRef = useRef(null);
+  const importHandled = useRef(false);
+  const importedIds = useMemo(
+    () => location.state?.source === "local-import" ? [...new Set(location.state.importedIds || [])] : [],
+    [location.state]
+  );
   const [query, setQuery] = useState("");
   const [dtype, setDtype] = useState("");
   const [dataset, setDataset] = useState("");
   const [predicate, setPredicate] = useState("");
-  const [reviewStatus, setReviewStatus] = useState("reviewed");
+  const [reviewStatus, setReviewStatus] = useState(location.state?.revealUnreviewed ? "all" : "reviewed");
   const [labels, setLabels] = useState(true);
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [showRelation, setShowRelation] = useState(false);
@@ -251,6 +257,7 @@ export default function GraphPage() {
     [graph.edges]
   );
   const graphDocumentIds = useMemo(() => new Set(graph.nodes.map((node) => node.data.id)), [graph.nodes]);
+  const importedFocusIds = useMemo(() => importedGraphNodeIds(graph, importedIds), [graph, importedIds]);
   const nodeOptions = graph.nodes
     .filter((node) => !node.data.unresolved)
     .slice()
@@ -267,6 +274,20 @@ export default function GraphPage() {
     const retained = selectedIds.filter((id) => graphDocumentIds.has(id));
     if (retained.length !== selectedIds.length) select(retained);
   }, [graphDocumentIds, select, selectedIds]);
+
+  useEffect(() => {
+    if (importHandled.current || !importedIds.length || !importedFocusIds.length) return undefined;
+    importHandled.current = true;
+    select(importedFocusIds);
+    const timer = setTimeout(() => {
+      const cy = apiRef.current;
+      if (!cy) return;
+      const elements = cy.collection();
+      importedFocusIds.forEach((id) => elements.merge(cy.getElementById(id)));
+      if (elements.length) cy.animate({ fit: { eles: elements, padding: 140 }, duration: 350 });
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [importedFocusIds, importedIds.length, select]);
 
   useEffect(() => {
     const node = params.get("node");
@@ -340,9 +361,12 @@ export default function GraphPage() {
       <Link className="back-link" to="/"><ArrowLeft size={14} /> Statistics dashboard</Link>
       <div className="page-heading graph-heading">
         <div><span className="eyebrow">Investigation graph</span><h1>Graph explorer</h1><p>Search, filter, and inspect the relationship network. Reviewed records are shown by default.</p></div>
-        <div className="button-row">
-          <button className="button" onClick={() => setShowRelation(true)} disabled={selectedIds.length !== 2}><Link2 size={16} /> Connect selected</button>
-          <button className="button primary" onClick={() => setShowQuickAdd(true)}><Plus size={16} /> Add graph document</button>
+        <div className="graph-heading-actions">
+          <div className="graph-source-status"><Database size={17} /><span><strong>Local PouchDB corpus</strong><small>startup + live changes</small></span></div>
+          <div className="button-row">
+            <button className="button" onClick={() => setShowRelation(true)} disabled={selectedIds.length !== 2}><Link2 size={16} /> Connect selected</button>
+            <button className="button primary" onClick={() => setShowQuickAdd(true)}><Plus size={16} /> Add graph document</button>
+          </div>
         </div>
       </div>
 
@@ -370,13 +394,18 @@ export default function GraphPage() {
         <button className="button small" onClick={fit}>Fit</button>
         <button className="button small" onClick={focusSelection} disabled={!selectedIds.length}><Focus size={15} /> Focus</button>
         <label className="checkbox compact"><input type="checkbox" checked={labels} onChange={(event) => setLabels(event.target.checked)} /> Labels</label>
-        <span className="graph-count">{visibleGraph.nodes.length} nodes · {visibleGraph.edges.length} edges</span>
+        <span className="graph-count">
+          {visibleGraph.nodes.length} nodes · {visibleGraph.edges.length} edges · {reviewGroups.reviewed.length.toLocaleString()} reviewed · {reviewGroups.unreviewed.length.toLocaleString()} unreviewed
+        </span>
       </div>
 
       {reviewStatus === "all" && reviewGroups.unreviewed.length > 0 && (
         <div className="graph-review-warning">
           <TriangleAlert size={17} />
-          <span>Unreviewed data is enabled. {reviewGroups.unreviewed.length.toLocaleString()} unreviewed records are displayed alongside reviewed records.</span>
+          <span>
+            {importedIds.length ? "Imported records are revealed for this graph session. " : "Unreviewed data is enabled. "}
+            {reviewGroups.unreviewed.length.toLocaleString()} unreviewed records are displayed alongside reviewed records.
+          </span>
         </div>
       )}
 

@@ -17,6 +17,7 @@ Quasar is a browser-first, offline-first StarIntel investigation workspace. It f
 - single-file upload
 - bulk multi-file upload
 - JSON, JSONL, NDJSON, and CSV import
+- save-and-open graph navigation for newly imported records
 - dataset and actor manifest file resolution
 - statistics dashboard
 - JSONL export
@@ -29,6 +30,7 @@ Quasar is a browser-first, offline-first StarIntel investigation workspace. It f
 ## Data boundary
 
 Quasar stores canonical StarIntel documents directly in `quasar-starintel-v09`.
+The graph is a projection of that local corpus: it hydrates on startup and refreshes from the PouchDB changes feed. Import navigation carries only selection/focus state and does not create a second graph document store.
 
 Quasar-only state is stored separately in `quasar-ui-state-v1`:
 
