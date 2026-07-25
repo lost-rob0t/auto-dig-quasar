@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { Database, File, Files, Play, Save, Trash2, UploadCloud } from "lucide-react";
+import { Database, File, Files, Network, Play, Save, Trash2, UploadCloud } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { normalizeActorManifest } from "../lib/actors";
+import { openImportedGraph } from "../lib/graph-navigation";
 import { useQuasar } from "../store";
 
 export function Report({ report }) {
@@ -38,19 +40,23 @@ export function Report({ report }) {
 }
 
 export function ImportPage() {
-  const { importFileSet, setNotice } = useQuasar();
+  const navigate = useNavigate();
+  const { importFileSet, select, setNotice } = useQuasar();
   const [files, setFiles] = useState([]);
   const [replace, setReplace] = useState(false);
   const [report, setReport] = useState(null);
   const [running, setRunning] = useState(false);
 
-  async function runImport(nextFiles = files) {
+  async function runImport(nextFiles = files, { openGraph = false } = {}) {
     if (!nextFiles.length) return;
     setRunning(true);
     try {
       const next = await importFileSet(nextFiles, { replace });
       setReport(next);
       setNotice({ kind: next.errors?.length || next.parseErrors?.length ? "warning" : "success", message: `Imported ${next.saved?.length || 0} document(s)` });
+      if (openGraph && !openImportedGraph({ importedIds: next.importedIds, select, navigate })) {
+        setNotice({ kind: "warning", message: "No newly saved documents are available to open" });
+      }
     } catch (error) {
       setReport(error.report || null);
       setNotice({ kind: "error", message: error.message });
@@ -99,7 +105,10 @@ export function ImportPage() {
         </div>
         <div className="form-actions import-actions">
           <label className="checkbox"><input type="checkbox" checked={replace} onChange={(event) => setReplace(event.target.checked)} /> Replace matching IDs even when the incoming version is not newer</label>
-          <button className="button primary" disabled={!files.length || running} onClick={() => runImport()}><UploadCloud size={16} /> {running ? "Validating and saving…" : "Run import"}</button>
+          <div className="button-row">
+            <button className="button" disabled={!files.length || running} onClick={() => runImport()}><UploadCloud size={16} /> {running ? "Validating and saving…" : "Save locally"}</button>
+            <button className="button primary" disabled={!files.length || running} onClick={() => runImport(files, { openGraph: true })}><Network size={16} /> Save and open graph</button>
+          </div>
         </div>
       </section>
       <Report report={report} />

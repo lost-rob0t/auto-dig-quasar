@@ -4,6 +4,7 @@ import {
   filterGraph,
   findPaths,
   graphStatistics,
+  importedGraphNodeIds,
   partitionDocumentsByReview,
   reviewState
 } from "./graph";
@@ -55,6 +56,18 @@ describe("StarIntel graph projection", () => {
       object: "starintel:entity:missing"
     })]);
     expect(graph.nodes.find((node) => node.data.id === "starintel:entity:missing")?.data.unresolved).toBe(true);
+  });
+
+  it("focuses imported nodes and the endpoints of imported relations", () => {
+    const graph = buildGraph(documents);
+    expect(importedGraphNodeIds(graph, [
+      "starintel:relation:a-b",
+      "starintel:org:c"
+    ])).toEqual([
+      "starintel:org:c",
+      "starintel:person:a",
+      "starintel:org:b"
+    ]);
   });
 
   it("finds ranked connection paths", () => {
