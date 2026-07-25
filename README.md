@@ -81,7 +81,7 @@ Switch it to the released package or merged default branch after the specificati
 - `.csv`: common envelope columns plus `data` JSON or `data.<field>` columns
 - manifests: select the manifest and referenced files in the same bulk file picker
 
-All candidate records are validated before PouchDB writes. Existing IDs are replaced only when explicitly requested or when the incoming version/date is newer.
+Imports are atomic by default: every candidate and duplicate ID is checked before PouchDB writes. A failed PouchDB bulk result triggers compensating rollback, and the report preserves file, record, validation-path, and write-phase details. Existing IDs are replaced only when explicitly requested or when the incoming version/date is newer.
 
 ## Browser actors
 

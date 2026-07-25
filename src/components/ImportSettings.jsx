@@ -3,9 +3,8 @@ import { Database, File, Files, Play, Save, Trash2, UploadCloud } from "lucide-r
 import { normalizeActorManifest } from "../lib/actors";
 import { useQuasar } from "../store";
 
-function Report({ report }) {
+export function Report({ report }) {
   if (!report) return null;
-  const errorCount = (report.errors?.length || 0) + (report.parseErrors?.length || 0);
   return (
     <section className="panel import-report">
       <h2>Import report</h2>
@@ -14,13 +13,24 @@ function Report({ report }) {
         <div className="key-value"><span>Candidates</span><strong>{report.candidateCount}</strong></div>
         <div className="key-value"><span>Saved</span><strong>{report.saved?.length || 0}</strong></div>
         <div className="key-value"><span>Skipped</span><strong>{report.skipped?.length || 0}</strong></div>
-        <div className="key-value"><span>Errors</span><strong>{errorCount}</strong></div>
+        <div className="key-value"><span>Invalid/write errors</span><strong>{report.errors?.length || 0}</strong></div>
+        <div className="key-value"><span>Parse errors</span><strong>{report.parseErrors?.length || 0}</strong></div>
+        <div className="key-value"><span>Rolled back</span><strong>{report.rolledBack || 0}</strong></div>
       </div>
       {[...(report.parseErrors || []), ...(report.errors || [])].map((error, index) => (
         <div className="validation-error" key={`${error.file || error.id || "error"}:${index}`}>
-          <strong>{error.file || error.id || `Record ${Number(error.index || 0) + 1}`}</strong>
-          <span>{error.line ? `line ${error.line}: ` : ""}{error.message}</span>
-          {error.validation?.map((item, position) => <code key={position}>{item.path} {item.message}</code>)}
+          <strong>{error.file || error.id || `Record ${error.record || Number(error.index || 0) + 1}`}</strong>
+          <span>
+            {error.line ? `line ${error.line}: ` : ""}
+            {error.id && error.file ? `${error.id}: ` : ""}
+            {error.phase ? `${error.phase}: ` : ""}
+            {error.message}
+          </span>
+          {error.validation?.map((item, position) => (
+            <code key={position}>
+              {item.path || "/"}{item.keyword ? ` [${item.keyword}]` : ""} {item.message}
+            </code>
+          ))}
         </div>
       ))}
     </section>
@@ -42,6 +52,7 @@ export function ImportPage() {
       setReport(next);
       setNotice({ kind: next.errors?.length || next.parseErrors?.length ? "warning" : "success", message: `Imported ${next.saved?.length || 0} document(s)` });
     } catch (error) {
+      setReport(error.report || null);
       setNotice({ kind: "error", message: error.message });
     } finally {
       setRunning(false);

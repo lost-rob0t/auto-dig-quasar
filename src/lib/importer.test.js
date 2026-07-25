@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { collectImportDocuments, documentsToJsonl } from "./importer";
+import { describe, expect, it, vi } from "vitest";
+import { collectImportDocuments, documentsToJsonl, importFiles } from "./importer";
 
 function file(name, text) {
   return { name, size: text.length, text: async () => text };
@@ -24,6 +24,21 @@ describe("browser imports", () => {
     const result = await collectImportDocuments([file("records.jsonl", `${JSON.stringify(document)}\n`)]);
     expect(result.documents).toHaveLength(1);
     expect(result.documents[0]._id).toBe(document._id);
+    expect(result.origins[0]).toEqual({ file: "records.jsonl", line: 1, record: 1 });
+  });
+
+  it("parses JSON, NDJSON, and CSV with stable source locations", async () => {
+    const json = await collectImportDocuments([file("records.json", JSON.stringify([document]))]);
+    const ndjson = await collectImportDocuments([file("records.ndjson", `${JSON.stringify(document)}\n`)]);
+    const csv = await collectImportDocuments([file(
+      "records.csv",
+      `_id,dataset,dtype,title,data\n${document._id},test,org,Test,"{""name"":""Test""}"\n`
+    )]);
+
+    expect(json.origins[0]).toEqual({ file: "records.json", record: 1 });
+    expect(ndjson.origins[0]).toEqual({ file: "records.ndjson", line: 1, record: 1 });
+    expect(csv.documents[0]._id).toBe(document._id);
+    expect(csv.origins[0]).toEqual({ file: "records.csv", line: 2, record: 1 });
   });
 
   it("resolves files named by a dataset manifest", async () => {
@@ -46,5 +61,34 @@ describe("browser imports", () => {
     const output = documentsToJsonl([document]);
     expect(output.endsWith("\n")).toBe(true);
     expect(JSON.parse(output.trim())._id).toBe(document._id);
+  });
+
+  it("rejects an atomic import before saving when any line fails to parse", async () => {
+    const saveBatch = vi.fn();
+    const promise = importFiles([
+      file("records.jsonl", `${JSON.stringify(document)}\n{not-json}\n`)
+    ], saveBatch);
+
+    await expect(promise).rejects.toMatchObject({
+      report: {
+        saved: [],
+        parseErrors: [{ file: "records.jsonl", line: 2 }]
+      }
+    });
+    expect(saveBatch).not.toHaveBeenCalled();
+  });
+
+  it("returns stable imported IDs from the committed batch", async () => {
+    const saveBatch = vi.fn().mockResolvedValue({
+      saved: [{ index: 0, id: document._id, rev: "1-a" }],
+      skipped: [],
+      errors: []
+    });
+    const result = await importFiles([
+      file("records.json", JSON.stringify(document))
+    ], saveBatch);
+
+    expect(result.importedIds).toEqual([document._id]);
+    expect(saveBatch.mock.calls[0][1].origins).toEqual([{ file: "records.json", record: 1 }]);
   });
 });
