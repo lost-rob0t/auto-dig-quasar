@@ -60,7 +60,8 @@ function predicateDefinition(id, source, extra = {}) {
     targetTypes: extra.targetTypes || ["*"],
     hint: extra.hint || "StarIntel relation predicate",
     common: Boolean(extra.common),
-    custom: Boolean(extra.custom)
+    custom: Boolean(extra.custom),
+    usageCount: Number(extra.usageCount || 0)
   };
 }
 
