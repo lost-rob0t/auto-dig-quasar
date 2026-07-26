@@ -75,9 +75,12 @@ describe("compact graph editors", () => {
     expect(html).toContain("Example Org");
     expect(html).toContain("Predicate");
     expect(html).toContain("person → org");
-    expect(html).toContain("Start date");
-    expect(html).toContain("End date");
+    expect(html).toContain("Start Date");
+    expect(html).toContain("End Date");
     expect(html).toContain("Reverse relation");
+    expect(html).toContain("Inspect JSON");
+    expect(html).toContain("Generate empty document");
+    expect(html).toContain("Add field");
     expect(html).toContain("Open full editor");
     expect(html).not.toContain("Select document");
   });
