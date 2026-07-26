@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 const context = vi.hoisted(() => ({ current: null }));
 vi.mock("../store", () => ({ useQuasar: () => context.current }));
+vi.mock("../lib/operations", () => ({ operation: {} }));
 
 import { CompactNodeEditor, CompactRelationEditor } from "./GraphEditors";
 
@@ -84,7 +85,7 @@ describe("compact graph editors", () => {
   it("renders searchable document selectors when endpoints are not fixed", () => {
     const html = render(<CompactRelationEditor documents={[person, org]} onClose={vi.fn()} />);
     expect(html).toContain("Select document");
-    expect(html).toContain("Search documents");
     expect(html).toContain('document reference · required');
+    expect(html).toContain('aria-expanded="false"');
   });
 });
