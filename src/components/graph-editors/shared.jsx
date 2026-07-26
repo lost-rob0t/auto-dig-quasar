@@ -42,6 +42,11 @@ export function GraphModalShell({ title, position, onClose, dirty = false, child
   }
 
   useEffect(() => {
+    document.body.classList.add("graph-editor-open");
+    return () => document.body.classList.remove("graph-editor-open");
+  }, []);
+
+  useEffect(() => {
     const root = modalRef.current;
     if (!root) return undefined;
     returnFocusRef.current = document.activeElement;
