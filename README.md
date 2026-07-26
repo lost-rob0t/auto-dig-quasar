@@ -61,19 +61,40 @@ The Pages build includes `404.html` as an SPA fallback so direct document routes
 
 ## Development
 
+From a clean checkout, install the pinned dependencies and start the local
+application at `http://localhost:5173` with one command:
+
+```bash
+npm ci && npm run dev
+```
+
+The individual validation and production commands are:
+
 ```bash
 npm ci
 npm run dev
 npm run check
 npm run typecheck
 npm test
+npx playwright install chromium
 npm run test:e2e
 npm run build
 ```
 
-Node.js 22 or newer and the committed npm lockfile define the reproducible
+Node.js 22.12 or newer and the committed npm lockfile define the reproducible
 toolchain. `npm run check` includes strict TypeScript validation plus syntax
 checks for the static service-worker runtime.
+
+Development and production builds use root hosting by default. Set
+`VITE_BASE_PATH` to an absolute URL path when deploying below a site root:
+
+```bash
+VITE_BASE_PATH=/quasar-ui/ npm run build
+```
+
+The Pages workflow sets this value from the repository name. The same normalized
+base path configures Vite assets, React Router, the web manifest, and service
+worker registration, so no backend or runtime URL rewriting is required.
 
 The TypeScript package entrypoints establish the intended dependency areas:
 

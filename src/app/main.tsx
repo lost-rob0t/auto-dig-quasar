@@ -4,10 +4,10 @@ import { BrowserRouter } from "react-router-dom";
 import App from "../App.jsx";
 import { QuasarProvider } from "../store.jsx";
 import { registerServiceWorker } from "../lib/service-worker-registration.js";
+import { routerBasename } from "./base-path";
 import "../styles.css";
 import "../dashboard.css";
 
-const base = import.meta.env.BASE_URL.replace(/\/$/, "") || "/";
 const rootElement = document.getElementById("root");
 
 if (!rootElement) {
@@ -16,7 +16,7 @@ if (!rootElement) {
 
 createRoot(rootElement).render(
   <StrictMode>
-    <BrowserRouter basename={base === "/" ? undefined : base}>
+    <BrowserRouter basename={routerBasename(import.meta.env.BASE_URL)}>
       <QuasarProvider>
         <App />
       </QuasarProvider>
