@@ -50,18 +50,18 @@ describe("schema field controls", () => {
           type: "object",
           properties: {
             scheme: { type: "string" },
-            canonical: { type: "boolean" }
+            active: { type: "boolean" }
           },
           required: ["scheme"]
         }}
-        value='{"scheme":"registry","canonical":true}'
+        value='{"scheme":"registry","active":true}'
         onChange={vi.fn()}
       />
     );
     expect(html).toContain("Scheme *");
-    expect(html).toContain("string · optional");
+    expect(html).toContain("<small>string</small>");
     expect(html).toContain("registry");
-    expect(html).toContain("Canonical");
+    expect(html).toContain("Active");
     expect(html).toContain('type="checkbox"');
     expect(html).not.toContain("<textarea");
   });
@@ -108,7 +108,7 @@ describe("schema field controls", () => {
     expect(html).toContain("New Organization");
     expect(html).toContain("Fields for org");
     expect(html).toContain("Legal Name");
-    expect(html).toContain("Org Type");
+    expect(html).toContain("Organization Type");
     expect(html).not.toContain("First Name");
   });
 
