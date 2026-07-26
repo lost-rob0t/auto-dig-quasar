@@ -13,6 +13,30 @@ const DTYPE_LABELS = {
   target: "Target"
 };
 
+const FIELD_LABELS = {
+  fname: "First Name",
+  mname: "Middle Name",
+  lname: "Last Name",
+  full_name: "Display Name",
+  dob: "Date of Birth",
+  org_type: "Organization Type",
+  target_type: "Target Type",
+  event_kind: "Event Type",
+  start_at: "Start Date",
+  end_at: "End Date",
+  date_added: "Date Added",
+  date_updated: "Date Updated",
+  published_at: "Published At",
+  retrieved_at: "Retrieved At",
+  publisher_id: "Publisher ID",
+  source_type_id: "Source Type ID",
+  target_id: "Target ID",
+  url: "URL",
+  uri: "URI",
+  asn: "ASN",
+  ip: "IP"
+};
+
 // This is display priority only. Every candidate is still loaded from the active schema.
 const ESSENTIAL_FIELD_PRIORITY = {
   person: ["fname", "mname", "lname", "full_name", "aliases", "description"],
@@ -45,24 +69,38 @@ function variants(fieldSchema = {}) {
 }
 
 export function isNullableSchema(fieldSchema = {}) {
-  return fieldSchema.type === "null" || variants(fieldSchema).some((candidate) => candidate.type === "null");
+  return fieldSchema.type === "null"
+    || (Array.isArray(fieldSchema.type) && fieldSchema.type.includes("null"))
+    || variants(fieldSchema).some((candidate) => candidate.type === "null"
+      || (Array.isArray(candidate.type) && candidate.type.includes("null")));
 }
 
 export function effectiveFieldSchema(fieldSchema = {}, rootSchema = schema) {
   const dereferenced = resolveReference(fieldSchema, rootSchema);
   const options = variants(dereferenced);
-  if (!options.length) return dereferenced;
+  if (!options.length) {
+    if (!Array.isArray(dereferenced.type)) return dereferenced;
+    return {
+      ...dereferenced,
+      type: dereferenced.type.find((type) => type !== "null") || dereferenced.type[0]
+    };
+  }
   const selected = options.find((candidate) => candidate.type && candidate.type !== "null")
     || options.find((candidate) => candidate.$ref)
     || options[0]
     || dereferenced;
-  return resolveReference({ ...selected, title: dereferenced.title || selected.title, description: dereferenced.description || selected.description }, rootSchema);
+  const resolved = resolveReference({ ...selected, title: dereferenced.title || selected.title, description: dereferenced.description || selected.description }, rootSchema);
+  if (!Array.isArray(resolved.type)) return resolved;
+  return { ...resolved, type: resolved.type.find((type) => type !== "null") || resolved.type[0] };
 }
 
 export function humanizeSchemaField(name) {
-  return String(name)
+  const key = String(name);
+  if (FIELD_LABELS[key]) return FIELD_LABELS[key];
+  return key
     .replaceAll("_", " ")
     .replaceAll("-", " ")
+    .replace(/\b(id|url|uri|ip|asn)\b/gi, (value) => value.toUpperCase())
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
