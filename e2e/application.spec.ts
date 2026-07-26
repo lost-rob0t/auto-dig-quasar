@@ -35,7 +35,7 @@ test("creates a graph node through the compact editor and preserves its full-edi
 
   await page.locator(".graph-stage").click({ button: "right", position: { x: 240, y: 220 } });
   await expect(page.getByRole("menu", { name: "canvas actions" })).toBeVisible();
-  await page.getByRole("menuitem", { name: /Create person/ }).click();
+  await page.getByRole("button", { name: "Create person here" }).click();
 
   const compactEditor = page.getByRole("dialog", { name: "New Person" });
   await expect(compactEditor).toBeVisible();
