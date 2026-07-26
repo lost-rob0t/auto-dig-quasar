@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import {
+  CircleMinus,
   Database,
+  Eraser,
   Focus,
   FolderInput,
   LayoutGrid,
@@ -78,6 +80,7 @@ export default function MobileGraphToolTray() {
   const [datasetOpen, setDatasetOpen] = useState(false);
   const [focusDisabled, setFocusDisabled] = useState(true);
   const [removeDisabled, setRemoveDisabled] = useState(true);
+  const [deleteDisabled, setDeleteDisabled] = useState(true);
   const [labelsOn, setLabelsOn] = useState(true);
 
   useEffect(() => {
@@ -107,6 +110,7 @@ export default function MobileGraphToolTray() {
         setStage((current) => (current === nextStage ? current : nextStage));
         setFocusDisabled(Boolean(hiddenGraphAction("Focus selection")?.disabled));
         setRemoveDisabled(Boolean(hiddenGraphAction("Remove from graph")?.disabled));
+        setDeleteDisabled(Boolean(hiddenGraphAction("Delete selected documents")?.disabled));
         setLabelsOn(
           hiddenGraphAction("Toggle labels")?.getAttribute("aria-pressed") === "true"
         );
@@ -232,10 +236,21 @@ export default function MobileGraphToolTray() {
               onClick={() => run(() => hiddenGraphAction("Toggle labels")?.click())}
             />
             <ToolButton
+              label="Clear"
+              Icon={Eraser}
+              onClick={() => run(() => hiddenGraphAction("Clear graph")?.click())}
+            />
+            <ToolButton
               label="Remove"
-              Icon={Trash2}
+              Icon={CircleMinus}
               disabled={removeDisabled}
               onClick={() => run(() => hiddenGraphAction("Remove from graph")?.click())}
+            />
+            <ToolButton
+              label="Delete"
+              Icon={Trash2}
+              disabled={deleteDisabled}
+              onClick={() => run(() => hiddenGraphAction("Delete selected documents")?.click())}
             />
           </div>
         </>
