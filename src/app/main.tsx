@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "../App.jsx";
+import GraphContextRadialBridge from "../components/GraphContextRadialBridge.jsx";
 import MobileGraphToolTray from "../components/MobileGraphToolTray.jsx";
 import OperatorUiEnhancer from "../components/OperatorUiEnhancer.jsx";
 import { QuasarProvider } from "../store.jsx";
@@ -36,6 +37,7 @@ createRoot(rootElement).render(
         <App />
         <OperatorUiEnhancer />
         <MobileGraphToolTray />
+        <GraphContextRadialBridge />
       </QuasarProvider>
     </BrowserRouter>
   </StrictMode>
