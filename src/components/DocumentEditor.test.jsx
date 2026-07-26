@@ -98,7 +98,7 @@ describe("schema field controls", () => {
     expect(html).toContain("Middle Name");
     expect(html).toContain("Last Name");
     expect(html).toContain("Add field");
-    expect(html).toContain('role="combobox"');
+    expect(html).toContain('aria-expanded="false"');
     expect(html).toContain("Advanced");
     expect(html).not.toContain("Nationalities");
   });
