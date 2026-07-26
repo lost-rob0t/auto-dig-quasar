@@ -1,0 +1,49 @@
+.graph-editor-field {
+  position: relative;
+  min-width: 0;
+}
+
+.graph-editor-field > .field,
+.graph-editor-field > .dtype-data-field {
+  margin: 0;
+}
+
+.graph-editor-field-remove {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+
+.predicate-similar-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .3rem;
+  align-items: center;
+}
+
+.predicate-similar-list small {
+  width: 100%;
+  color: var(--muted);
+  font-size: .64rem;
+}
+
+.predicate-similar-list code {
+  padding: .2rem .35rem;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--surface);
+  font-size: .62rem;
+}
+
+.graph-reference-readonly .validation-error,
+.graph-document-select .validation-error,
+.predicate-autocomplete .validation-error,
+.graph-editor-field .validation-error {
+  margin: .25rem 0 0;
+}
+
+@media (max-width: 850px) {
+  .custom-predicate-form .graph-relation-grid {
+    grid-template-columns: 1fr;
+  }
+}
