@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "../App.jsx";
+import OperatorUiEnhancer from "../components/OperatorUiEnhancer.jsx";
 import { QuasarProvider } from "../store.jsx";
 import { registerServiceWorker } from "../lib/service-worker-registration.js";
 import { initializeTheme } from "../lib/themes.js";
@@ -12,6 +13,7 @@ import "../dashboard-theme.css";
 import "../mobile.css";
 import "../mobile-editor.css";
 import "../gesture-menu.css";
+import "../operator-ui.css";
 
 initializeTheme();
 
@@ -26,6 +28,7 @@ createRoot(rootElement).render(
     <BrowserRouter basename={routerBasename(import.meta.env.BASE_URL)}>
       <QuasarProvider>
         <App />
+        <OperatorUiEnhancer />
       </QuasarProvider>
     </BrowserRouter>
   </StrictMode>
