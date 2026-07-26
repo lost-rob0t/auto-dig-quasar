@@ -28,6 +28,14 @@ jobs:
       - run: npm run check
       - run: npm test
       - run: npm run build
+        env:
+          VITE_BASE_PATH: /${{ github.event.repository.name }}/
+      - name: Validate Pages base path
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "src=\"/${{ github.event.repository.name }}/assets/" dist/index.html
+          grep -q "href=\"/${{ github.event.repository.name }}/manifest.webmanifest\"" dist/index.html
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

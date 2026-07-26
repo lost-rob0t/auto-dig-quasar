@@ -25,6 +25,8 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm test
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
       - run: npm run build
       - name: Validate application artifact
         shell: bash
@@ -35,3 +37,5 @@ jobs:
           test -s dist/sw.js
           test -s dist/manifest.webmanifest
           grep -q "Quasar" dist/index.html
+          grep -q 'src="/assets/' dist/index.html
+          grep -q 'href="/manifest.webmanifest"' dist/index.html
