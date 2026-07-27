@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { Flag, X } from "lucide-react";
-import { useLocation, useParams } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { putState } from "../../lib/db";
 import { useQuasar } from "../../store";
 import { useAutoDig } from "../bridge/context";
@@ -81,17 +81,18 @@ function CorrectionReportDialog() {
 
 export function CorrectionActionSurface() {
   const location = useLocation();
-  const { id } = useParams();
   const { documents, selectedDocuments } = useQuasar();
   const { openCorrection } = useCorrectionReports();
-  const decodedId = id ? decodeURIComponent(id) : null;
-  const routed = decodedId ? documents.find((document) => document._id === decodedId) : null;
+  const routeMatch = location.pathname.match(/^\/documents\/([^/]+)(?:\/edit)?$/);
+  const routeId = routeMatch && routeMatch[1] !== "new" ? decodeURIComponent(routeMatch[1]) : null;
+  const routed = routeId ? documents.find((document) => document._id === routeId) : null;
   const selected = selectedDocuments?.[0] || null;
   const target = routed || selected;
-  const editorVisible = /\/documents\/(new|[^/]+\/edit)$/.test(location.pathname);
+  const editorVisible = /^\/documents\/(new|[^/]+\/edit)$/.test(location.pathname);
   const detailVisible = /^\/documents\/[^/]+$/.test(location.pathname);
   if (!target || (!editorVisible && !detailVisible)) return null;
   const kind = target.dtype === "relation" ? "relation" : target.dtype === "finding" ? "finding" : "document";
   const reportType = kind === "relation" ? "bad-relation" : "incorrect-data";
-  return <button className="auto-dig-correction-dock button" type="button" onClick={() => openCorrection({ kind, targetId: target._id, document: target }, reportType)}><Flag size={15} /> Report incorrect data</button>;
+  const label = kind === "relation" ? "Report bad relation" : "Report incorrect data";
+  return <button className="auto-dig-correction-dock button" type="button" onClick={() => openCorrection({ kind, targetId: target._id, document: target }, reportType)}><Flag size={15} /> {label}</button>;
 }
