@@ -6,6 +6,8 @@ import {
   Download,
   FilePlus2,
   FolderInput,
+  Inbox,
+  Info,
   Menu,
   Network,
   Redo2,
@@ -22,17 +24,22 @@ import { DocumentPage, DocumentsPage } from "./components/Documents";
 import DocumentEditor from "./components/DocumentEditor";
 import { ImportPage, SettingsPage } from "./components/ImportSettings";
 import StatsPage from "./components/StatsPage";
-import { AgentBubble, AgentConsole, AgentSystemProvider } from "./components/AgentSystem";
+import { AgentBubble, AgentSystemProvider } from "./components/AgentSystem";
 import MobileGestureMenu from "./components/MobileGestureMenu";
+import AutoDigActorsPage from "./auto-dig/components/AutoDigActorsPage";
+import TiplinePage from "./auto-dig/tipline/TiplinePage";
+import { autoDigBuildVersion } from "./auto-dig/version";
 
 const navigation = [
-  { to: "/", label: "Dashboard", mobileLabel: "Home", Icon: Activity, end: true },
+  { to: "/", label: "Research", mobileLabel: "Research", Icon: Activity, end: true },
   { to: "/graph", label: "Graph", mobileLabel: "Graph", Icon: Network },
   { to: "/documents", label: "Documents", mobileLabel: "Docs", Icon: TableProperties },
-  { to: "/documents/new", label: "Add document", mobileLabel: "Add", Icon: FilePlus2 },
-  { to: "/agents", label: "Agents", Icon: Bot },
+  { to: "/documents/new", label: "Add document", Icon: FilePlus2 },
+  { to: "/agents", label: "Actors", mobileLabel: "Actors", Icon: Bot },
+  { to: "/tipline", label: "Tipline", mobileLabel: "Tips", Icon: Inbox },
   { to: "/import", label: "Import", Icon: FolderInput },
-  { to: "/settings", label: "Settings", mobileLabel: "Settings", Icon: Settings }
+  { to: "/settings", label: "Settings", Icon: Settings },
+  { to: "/about", label: "About", Icon: Info }
 ];
 
 const mobileNavigation = navigation.filter(({ mobileLabel }) => mobileLabel);
@@ -111,14 +118,15 @@ function WorkbenchShell({ children }) {
           <div className="brand-mark">Q</div>
           <div>
             <strong>Quasar</strong>
-            <span>StarIntel workspace</span>
+            <span>Auto-Dig graph operator</span>
           </div>
         </div>
         <nav aria-label="Primary navigation"><NavigationLinks /></nav>
         <div className="sidebar-foot">
           <div><Database size={15} /> {documents.length} documents</div>
           <div><SyncBadge /></div>
-          <small>Offline-first · v0.9.0</small>
+          <small>Local first · schema {autoDigBuildVersion.starIntelSchema}</small>
+          <small>fork {String(autoDigBuildVersion.quasarFork).slice(0, 12)} · upstream {String(autoDigBuildVersion.quasarUpstreamBase).slice(0, 12)}</small>
         </div>
       </aside>
 
@@ -168,11 +176,25 @@ function WorkbenchShell({ children }) {
   );
 }
 
+function VersionPage() {
+  return (
+    <section className="simple-page">
+      <div className="page-heading"><div><span className="eyebrow">Build identity</span><h1>About</h1><p>Exact versions used by this Auto-Dig build.</p></div></div>
+      <dl>
+        <dt>Auto-Dig version</dt><dd><code>{autoDigBuildVersion.autoDig}</code></dd>
+        <dt>Quasar fork version</dt><dd><code>{autoDigBuildVersion.quasarFork}</code></dd>
+        <dt>Quasar upstream base commit</dt><dd><code>{autoDigBuildVersion.quasarUpstreamBase}</code></dd>
+        <dt>StarIntel schema version</dt><dd><code>{autoDigBuildVersion.starIntelSchema}</code></dd>
+      </dl>
+    </section>
+  );
+}
+
 function NotFound() {
   return (
     <section className="empty-state">
       <h1>Route not found</h1>
-      <NavLink className="button primary" to="/">Open dashboard</NavLink>
+      <NavLink className="button primary" to="/">Open research</NavLink>
     </section>
   );
 }
@@ -189,9 +211,11 @@ export default function App() {
           <Route path="/documents/:id" element={<DocumentPage />} />
           <Route path="/documents/:id/edit" element={<DocumentEditor mode="edit" />} />
           <Route path="/import" element={<ImportPage />} />
-          <Route path="/agents" element={<AgentConsole />} />
+          <Route path="/agents" element={<AutoDigActorsPage />} />
+          <Route path="/tipline" element={<TiplinePage />} />
           <Route path="/stats" element={<Navigate to="/" replace />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/about" element={<VersionPage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
         <GraphLayoutControl />
