@@ -1,8 +1,7 @@
-import cytoscape from "cytoscape";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   boxesOverlap,
-  installGraphGestures,
+  clearSelectionForUserPan,
   relationDropPadding
 } from "./graph-gestures";
 
@@ -35,17 +34,22 @@ describe("graph gestures", () => {
     expect(relationDropPadding("pen")).toBe(relationDropPadding("touch"));
   });
 
-  it("releases selection when the user drag-pans the canvas", () => {
-    const cy = installGraphGestures(cytoscape({
-      headless: true,
-      elements: [{ data: { id: "selected-node" } }]
-    }));
-    const node = cy.$id("selected-node");
+  it("releases selection for a user canvas pan", () => {
+    const unselect = vi.fn();
+    const cy = {
+      $: vi.fn(() => ({ length: 1, unselect }))
+    };
 
-    node.select();
-    cy.emit("dragpan");
+    expect(clearSelectionForUserPan(cy)).toBe(true);
+    expect(cy.$).toHaveBeenCalledWith("node:selected");
+    expect(unselect).toHaveBeenCalledOnce();
+  });
 
-    expect(node.selected()).toBe(false);
-    cy.destroy();
+  it("does nothing when a canvas pan has no selected nodes", () => {
+    const cy = {
+      $: vi.fn(() => ({ length: 0, unselect: vi.fn() }))
+    };
+
+    expect(clearSelectionForUserPan(cy)).toBe(false);
   });
 });
