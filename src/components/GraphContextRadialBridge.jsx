@@ -6,6 +6,7 @@ import {
   CircleDot,
   Database,
   FileText,
+  Flag,
   Grid2X2,
   Lightbulb,
   MapPin,
@@ -15,6 +16,8 @@ import {
   X
 } from "lucide-react";
 import { createPortal } from "react-dom";
+import { useCorrectionReports } from "../auto-dig/correction-reports/CorrectionReports";
+import { useQuasar } from "../store";
 
 const QUICK_TYPES = [
   { label: "person", Icon: UserRound },
@@ -48,14 +51,30 @@ function invokeAction(menu, predicate) {
   action?.click();
 }
 
+function menuKind(menu) {
+  if (menu?.classList.contains("node-actions")) return "node";
+  if (menu?.classList.contains("edge-actions")) return "relation";
+  return "canvas";
+}
+
+function linkedDocumentId(menu) {
+  const link = [...(menu?.querySelectorAll("a[href]") || [])]
+    .map((element) => element.getAttribute("href") || "")
+    .find((href) => href.includes("/documents/"));
+  const match = link?.match(/\/documents\/([^/?#]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 export default function GraphContextRadialBridge() {
   const [menu, setMenu] = useState(null);
   const [category, setCategory] = useState("");
   const [, setVersion] = useState(0);
+  const { documents, selectedIds } = useQuasar();
+  const { openCorrection } = useCorrectionReports();
 
   useEffect(() => {
     const sync = () => {
-      const next = document.querySelector(".graph-context-menu.canvas-actions");
+      const next = document.querySelector(".graph-context-menu.expanded");
       setMenu((current) => current === next ? current : next);
       setVersion((current) => current + 1);
     };
@@ -67,6 +86,13 @@ export default function GraphContextRadialBridge() {
 
   useEffect(() => setCategory(""), [menu]);
 
+  const kind = menuKind(menu);
+  const correctionDocument = useMemo(() => {
+    if (!menu || kind === "canvas") return null;
+    const id = kind === "node" ? selectedIds[0] || linkedDocumentId(menu) : linkedDocumentId(menu);
+    return documents.find((document) => document._id === id) || null;
+  }, [documents, kind, menu, selectedIds]);
+
   const categoryActions = useMemo(() => {
     if (!menu || !category) return [];
     const matcher = CATEGORY_MATCHERS[category];
@@ -76,6 +102,26 @@ export default function GraphContextRadialBridge() {
   }, [category, menu]);
 
   if (!menu) return null;
+
+  // Auto-Dig fork: inject extension actions without changing the upstream graph editor.
+  if (kind !== "canvas") {
+    return createPortal(
+      correctionDocument ? (
+        <button
+          data-radial-bridge="true"
+          role="menuitem"
+          type="button"
+          onClick={() => openCorrection(
+            { kind, targetId: correctionDocument._id, document: correctionDocument },
+            kind === "relation" ? "bad-relation" : "incorrect-data"
+          )}
+        >
+          <Flag size={15} /> {kind === "relation" ? "Report bad relation" : "Report incorrect data"}
+        </button>
+      ) : null,
+      menu
+    );
+  }
 
   return createPortal(
     <>
