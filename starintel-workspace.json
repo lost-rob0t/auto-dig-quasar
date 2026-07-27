@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "workspace_env": "STARINTEL_HOME",
+  "default_workspace": "~/starintel",
+  "repositories": [
+    {
+      "name": "auto-dig-quasar",
+      "repository": "lost-rob0t/auto-dig-quasar",
+      "role": "auto-dig-quasar-fork",
+      "required": true
+    },
+    {
+      "name": "quasar-ui",
+      "repository": "lost-rob0t/quasar-ui",
+      "role": "quasar-upstream",
+      "required": true
+    },
+    {
+      "name": "starintel-gpt-auto-dig",
+      "repository": "lost-rob0t/starintel-gpt-auto-dig",
+      "role": "auto-dig-application",
+      "required": true
+    },
+    {
+      "name": "starintel-auto-research",
+      "repository": "lost-rob0t/starintel-auto-research",
+      "role": "research-orchestration",
+      "required": true
+    },
+    {
+      "name": "zero-forge",
+      "repository": "lost-rob0t/zero-forge",
+      "role": "agent-zero-development",
+      "required": true
+    },
+    {
+      "name": "starintel_doc.js",
+      "repository": "lost-rob0t/starintel_doc.js",
+      "role": "schema-javascript",
+      "required": true
+    },
+    {
+      "name": "starintel-doc",
+      "repository": "lost-rob0t/starintel-doc",
+      "role": "schema-python-or-core",
+      "required": true
+    },
+    {
+      "name": "starintel-doc.nim",
+      "repository": "lost-rob0t/starintel-doc.nim",
+      "role": "schema-nim",
+      "required": true
+    },
+    {
+      "name": "star-cl",
+      "repository": "lost-rob0t/star-cl",
+      "role": "schema-common-lisp",
+      "required": true
+    },
+    {
+      "name": "starintel-server",
+      "repository": "lost-rob0t/starintel-server",
+      "role": "optional-server-runtime",
+      "required": true
+    },
+    {
+      "name": "rabbit-consumers",
+      "repository": "lost-rob0t/rabbit-consumers",
+      "role": "optional-queue-runtime",
+      "required": true
+    },
+    {
+      "name": "cl-gserver",
+      "repository": "lost-rob0t/cl-gserver",
+      "role": "common-lisp-actor-runtime",
+      "required": true
+    },
+    {
+      "name": "cl-couch",
+      "repository": "lost-rob0t/cl-couch",
+      "role": "optional-couchdb-client",
+      "required": true
+    },
+    {
+      "name": "AsyncCouchDB2",
+      "repository": "lost-rob0t/AsyncCouchDB2",
+      "role": "optional-nim-couchdb-client",
+      "required": true
+    },
+    {
+      "name": "WhatsMyName",
+      "repository": "lost-rob0t/WhatsMyName",
+      "role": "username-lookup-data",
+      "required": true
+    },
+    {
+      "name": "starRouter",
+      "repository": "lost-rob0t/starRouter",
+      "role": "routing-runtime",
+      "required": false
+    },
+    {
+      "name": "star-router-cli",
+      "repository": "lost-rob0t/star-router-cli",
+      "role": "routing-cli-archived-check",
+      "required": false
+    },
+    {
+      "name": "nextflow-recon",
+      "repository": "lost-rob0t/nextflow-recon",
+      "role": "research-pipeline",
+      "required": false
+    }
+  ],
+  "local_first": {
+    "required": true,
+    "external_services_required": false,
+    "optional_services": [
+      "CouchDB",
+      "RabbitMQ",
+      "StarIntel Server"
+    ]
+  },
+  "toolchains": [
+    "git",
+    "node>=22",
+    "npm",
+    "python>=3.11",
+    "sbcl",
+    "roswell",
+    "nim",
+    "swipl",
+    "nix",
+    "docker"
+  ]
+}
