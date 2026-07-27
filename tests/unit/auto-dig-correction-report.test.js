@@ -24,9 +24,7 @@ describe("Auto-Dig correction reports", () => {
       datasetId: "d1",
       runId: "r1"
     });
-    const url = new URL(
-      githubIssueUrl("lost-rob0t/starintel-gpt-auto-dig", report)
-    );
+    const url = new URL(githubIssueUrl("lost-rob0t/starintel-gpt-auto-dig", report));
     expect(url.hostname).toBe("github.com");
     expect(url.searchParams.get("body")).toContain(report.id);
   });
