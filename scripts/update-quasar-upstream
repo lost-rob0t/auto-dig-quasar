@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+run() { printf '\n==> %s\n' "$*"; "$@"; }
+
+[[ -z "$(git status --porcelain)" ]] || fail "working tree is not clean"
+git remote get-url origin >/dev/null 2>&1 || fail "origin remote is missing"
+git remote get-url upstream >/dev/null 2>&1 || fail "upstream remote is missing"
+
+upstream_branch="${QUASAR_UPSTREAM_BRANCH:-main}"
+default_branch="${QUASAR_FORK_BRANCH:-main}"
+branch="sync/quasar-$(date -u +%F)"
+
+run git fetch --prune origin
+run git fetch --prune upstream
+run git checkout "$default_branch"
+run git pull --ff-only origin "$default_branch"
+run git checkout -b "$branch"
+
+if ! git merge --no-edit "upstream/$upstream_branch"; then
+  printf '\nConflicted files:\n' >&2
+  git diff --name-only --diff-filter=U >&2 || true
+  fail "upstream merge has conflicts; resolve them on $branch without discarding fork commits"
+fi
+
+run npm ci
+run npm run format
+run npm run format:check
+run npm run lint
+run npm run typecheck
+run npm test
+run env VITE_BASE_PATH=/quasar/app/ npm run build
+
+fork_commit="$(git rev-parse HEAD)"
+upstream_commit="$(git rev-parse "upstream/$upstream_branch")"
+auto_dig_dir="${AUTO_DIG_DIR:-../starintel-gpt-auto-dig}"
+[[ -d "$auto_dig_dir" ]] || fail "Auto-Dig checkout not found at $auto_dig_dir"
+
+run python3 "$auto_dig_dir/scripts/build-auto-dig-quasar.py" \
+  --auto-dig-root "$auto_dig_dir" \
+  --quasar-dist "$PWD/dist" \
+  --quasar-fork-commit "$fork_commit" \
+  --quasar-upstream-commit "$upstream_commit"
+run python3 "$auto_dig_dir/scripts/validate-for-merge.py" --site
+
+printf '\nUpstream sync branch is ready: %s\n' "$branch"
+printf 'Fork commit: %s\nUpstream base: %s\n' "$fork_commit" "$upstream_commit"
+printf 'No push was performed. Review, then push normally; never force-push this branch.\n'
