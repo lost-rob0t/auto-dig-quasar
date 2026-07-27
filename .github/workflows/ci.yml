@@ -27,11 +27,7 @@ jobs:
       - run: npm run typecheck
       - run: npm run check:boundaries
       - run: npm run check:static
-      - name: Run tests
-        shell: bash
-        run: |
-          set -o pipefail
-          npm test 2>&1 | tee vitest-output.log
+      - run: npm test
       - run: npm run build
       - name: Validate application artifact
         shell: bash
@@ -54,6 +50,5 @@ jobs:
             dist
             playwright-report
             test-results
-            vitest-output.log
           if-no-files-found: ignore
           retention-days: 7
