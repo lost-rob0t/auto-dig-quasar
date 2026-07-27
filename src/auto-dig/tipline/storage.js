@@ -1,6 +1,9 @@
-import { stateDb } from "../../lib/db";
-
 const PREFIX = "auto-dig:tip:";
+
+async function stateDatabase() {
+  const { stateDb } = await import("../../lib/db");
+  return stateDb;
+}
 
 export function createTip(values = {}) {
   const now = new Date().toISOString();
@@ -22,11 +25,13 @@ export function createTip(values = {}) {
 }
 
 export async function listTips() {
+  const stateDb = await stateDatabase();
   const result = await stateDb.allDocs({ include_docs: true, startkey: PREFIX, endkey: `${PREFIX}\ufff0` });
   return result.rows.map((row) => row.doc).filter(Boolean).sort((left, right) => String(right.updated_at).localeCompare(String(left.updated_at)));
 }
 
 export async function saveTip(input) {
+  const stateDb = await stateDatabase();
   const tip = createTip(input);
   if (input._rev) tip._rev = input._rev;
   else {
@@ -42,6 +47,7 @@ export async function saveTip(input) {
 }
 
 export async function deleteTip(tip) {
+  const stateDb = await stateDatabase();
   const current = tip._rev ? tip : await stateDb.get(tip._id);
   await stateDb.remove(current);
 }
