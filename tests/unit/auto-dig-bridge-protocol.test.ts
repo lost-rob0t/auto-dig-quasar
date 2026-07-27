@@ -1,8 +1,5 @@
+import { AUTO_DIG_PROTOCOL, isBridgeMessage } from "../../src/auto-dig/bridge/protocol";
 import { describe, expect, it } from "vitest";
-import {
-  AUTO_DIG_PROTOCOL,
-  isBridgeMessage
-} from "../../src/auto-dig/bridge/protocol";
 
 describe("Auto-Dig bridge protocol", () => {
   it("accepts typed protocol messages", () => {
@@ -16,8 +13,6 @@ describe("Auto-Dig bridge protocol", () => {
   });
 
   it("rejects unrelated messages", () => {
-    expect(isBridgeMessage({ protocol: "other", channel: "event" })).toBe(
-      false
-    );
+    expect(isBridgeMessage({ protocol: "other", channel: "event" })).toBe(false);
   });
 });
