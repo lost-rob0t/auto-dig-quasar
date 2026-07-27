@@ -1,13 +1,5 @@
 import { describe, expect, it } from "vitest";
-
-if (!globalThis.self) {
-  Object.defineProperty(globalThis, "self", {
-    value: globalThis,
-    configurable: true
-  });
-}
-
-const { createTip } = await import("../../src/auto-dig/tipline/storage");
+import { createTip } from "../../src/auto-dig/tipline/storage";
 
 describe("Auto-Dig Tipline storage", () => {
   it("preserves tip identity across updates", () => {
