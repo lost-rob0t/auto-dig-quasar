@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { stateDb, watchDocuments } from "../../lib/db";
 import { applyTheme } from "../../lib/themes";
@@ -28,25 +28,25 @@ export default function AutoDigRuntime() {
   const loadedDataset = useRef("");
   const pendingHostWrites = useRef(new Map());
 
-  function queueHostWrites(documents) {
+  const queueHostWrites = useCallback((documents) => {
     for (const id of documentIds(documents)) {
       pendingHostWrites.current.set(id, (pendingHostWrites.current.get(id) || 0) + 1);
     }
-  }
+  }, []);
 
-  function releaseHostWrite(id) {
+  const releaseHostWrite = useCallback((id) => {
     const count = pendingHostWrites.current.get(id) || 0;
     if (count <= 1) pendingHostWrites.current.delete(id);
     else pendingHostWrites.current.set(id, count - 1);
-  }
+  }, []);
 
-  function consumeHostWrite(id) {
+  const consumeHostWrite = useCallback((id) => {
     if (!pendingHostWrites.current.has(id)) return false;
     releaseHostWrite(id);
     return true;
-  }
+  }, [releaseHostWrite]);
 
-  async function importHostDocuments(documents) {
+  const importHostDocuments = useCallback(async (documents) => {
     queueHostWrites(documents);
     let savedIds = new Set();
     try {
@@ -61,7 +61,7 @@ export default function AutoDigRuntime() {
         if (!savedIds.has(id)) releaseHostWrite(id);
       }
     }
-  }
+  }, [bulkSaveDocuments, queueHostWrites, releaseHostWrite]);
 
   useEffect(() => {
     if (!bridge || !connected || !datasetId || loadedDataset.current === datasetId) return undefined;
@@ -80,7 +80,7 @@ export default function AutoDigRuntime() {
       })
       .catch((error) => setNotice({ kind: "error", message: error.message }));
     return () => { active = false; };
-  }, [addDocumentsToActiveGraph, bridge, bulkSaveDocuments, connected, datasetId, setNotice]);
+  }, [addDocumentsToActiveGraph, bridge, connected, datasetId, importHostDocuments, setNotice]);
 
   useEffect(() => {
     if (!bridge || !connected) return undefined;
@@ -99,7 +99,7 @@ export default function AutoDigRuntime() {
         navigate(event.payload.route);
       }
     });
-  }, [addDocumentsToActiveGraph, bridge, bulkSaveDocuments, connected, navigate, setNotice]);
+  }, [addDocumentsToActiveGraph, bridge, connected, importHostDocuments, navigate, setNotice]);
 
   useEffect(() => {
     if (!bridge || !connected) return undefined;
@@ -112,7 +112,7 @@ export default function AutoDigRuntime() {
         : bridge.saveDocument(document);
       save.catch((error) => setNotice({ kind: "error", message: `Auto-Dig mirror failed: ${error.message}` }));
     });
-  }, [bridge, connected, setNotice]);
+  }, [bridge, connected, consumeHostWrite, setNotice]);
 
   useEffect(() => {
     if (!bridge || !connected) return undefined;
