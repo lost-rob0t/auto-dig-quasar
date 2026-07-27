@@ -15,6 +15,14 @@ function documentIds(documents) {
   return documents.map((document) => document?._id).filter(Boolean);
 }
 
+function acceptedDocumentIds(report, fallbackDocuments = []) {
+  const accepted = [
+    ...(report?.saved || []),
+    ...(report?.skipped || [])
+  ].map((item) => item?.id).filter(Boolean);
+  return accepted.length ? [...new Set(accepted)] : documentIds(fallbackDocuments);
+}
+
 export default function AutoDigRuntime() {
   const { bridge, connected, datasetId } = useAutoDig();
   const {
@@ -50,7 +58,7 @@ export default function AutoDigRuntime() {
     queueHostWrites(documents);
     let savedIds = new Set();
     try {
-      const report = await bulkSaveDocuments(documents, { replace: true, atomic: false });
+      const report = await bulkSaveDocuments(documents, { replace: false, atomic: false });
       savedIds = new Set(report.saved?.map((item) => item.id).filter(Boolean) || []);
       return report;
     } catch (error) {
@@ -72,7 +80,7 @@ export default function AutoDigRuntime() {
         const documents = Array.isArray(dataset.documents) ? dataset.documents : [];
         if (documents.length) {
           const report = await importHostDocuments(documents);
-          const ids = report.saved?.map((item) => item.id).filter(Boolean) || documentIds(documents);
+          const ids = acceptedDocumentIds(report, documents);
           if (ids.length) addDocumentsToActiveGraph(ids);
         }
         loadedDataset.current = datasetId;
@@ -89,7 +97,7 @@ export default function AutoDigRuntime() {
         const documents = documentsFromEvent(event);
         if (!documents.length) return;
         importHostDocuments(documents)
-          .then(() => addDocumentsToActiveGraph(documentIds(documents)))
+          .then((report) => addDocumentsToActiveGraph(acceptedDocumentIds(report, documents)))
           .catch((error) => setNotice({ kind: "error", message: error.message }));
       }
       if (event.type === "theme-changed" && typeof event.payload?.theme === "string") {
