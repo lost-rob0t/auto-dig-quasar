@@ -15,6 +15,30 @@ const LEGACY_LAYOUTS = Object.freeze({
   grid: "orthogonal"
 });
 
+const ORGANIC_DENSITY_TIERS = Object.freeze([
+  {
+    minimumNodes: 160,
+    idealEdgeLength: 42,
+    nodeRepulsion: 1800,
+    componentSpacing: 32,
+    gravity: 1.4
+  },
+  {
+    minimumNodes: 60,
+    idealEdgeLength: 50,
+    nodeRepulsion: 2300,
+    componentSpacing: 40,
+    gravity: 1.25
+  },
+  {
+    minimumNodes: 0,
+    idealEdgeLength: 62,
+    nodeRepulsion: 3000,
+    componentSpacing: 52,
+    gravity: 1.1
+  }
+]);
+
 export function normalizeMaltegoLayout(layout) {
   const value = String(layout || "").trim().toLowerCase();
   if (MALTEGO_LAYOUTS.some((candidate) => candidate.id === value)) return value;
@@ -145,8 +169,25 @@ export function blockPositions(elements) {
   return positions;
 }
 
+export function organicLayoutTuning(elements, interactive = false) {
+  const nodeCount = Math.max(0, Number(elements?.nodes?.().length) || 0);
+  const tier = ORGANIC_DENSITY_TIERS.find(({ minimumNodes }) => nodeCount >= minimumNodes)
+    || ORGANIC_DENSITY_TIERS[ORGANIC_DENSITY_TIERS.length - 1];
+
+  if (!interactive) return { ...tier };
+
+  return {
+    ...tier,
+    idealEdgeLength: Math.max(36, tier.idealEdgeLength - 4),
+    nodeRepulsion: Math.max(1600, tier.nodeRepulsion - 200),
+    componentSpacing: Math.max(28, tier.componentSpacing - 4),
+    gravity: tier.gravity + 0.1
+  };
+}
+
 export function maltegoLayoutOptions(cy, options = {}) {
-  const name = String(options.name || "").toLowerCase();
+  const requestedName = String(options.name || "").toLowerCase();
+  const name = LEGACY_LAYOUTS[requestedName] || requestedName;
   const elements = layoutElements(cy, options);
 
   switch (name) {
@@ -169,8 +210,8 @@ export function maltegoLayoutOptions(cy, options = {}) {
         circle: false,
         grid: true,
         roots: hierarchyRoots(elements),
-        spacingFactor: 1.3,
-        padding: options.padding ?? 60
+        spacingFactor: 1.15,
+        padding: options.padding ?? 48
       };
     case "circular":
       return {
@@ -179,35 +220,43 @@ export function maltegoLayoutOptions(cy, options = {}) {
         eles: elements,
         concentric: (node) => node.degree(false),
         levelWidth: (nodes) => Math.max(1, asNumber(nodes.maxDegree()) / 4),
-        minNodeSpacing: 45,
+        minNodeSpacing: 34,
         avoidOverlap: true,
         equidistant: false,
-        padding: options.padding ?? 60
+        padding: options.padding ?? 48
       };
-    case "organic":
+    case "organic": {
+      const tuning = organicLayoutTuning(elements);
       return {
         ...options,
         name: "cose",
         eles: elements,
         randomize: true,
-        idealEdgeLength: () => 90,
-        nodeRepulsion: () => 5200,
-        componentSpacing: 90,
-        padding: options.padding ?? 60
+        idealEdgeLength: () => tuning.idealEdgeLength,
+        nodeRepulsion: () => tuning.nodeRepulsion,
+        componentSpacing: tuning.componentSpacing,
+        gravity: tuning.gravity,
+        nodeOverlap: 6,
+        padding: options.padding ?? 48
       };
-    case "interactive-organic":
+    }
+    case "interactive-organic": {
+      const tuning = organicLayoutTuning(elements, true);
       return {
         ...options,
         name: "cose",
         eles: elements,
         randomize: false,
-        idealEdgeLength: () => 90,
-        nodeRepulsion: () => 4600,
-        componentSpacing: 100,
-        initialTemp: 60,
-        numIter: 450,
-        padding: options.padding ?? 60
+        idealEdgeLength: () => tuning.idealEdgeLength,
+        nodeRepulsion: () => tuning.nodeRepulsion,
+        componentSpacing: tuning.componentSpacing,
+        gravity: tuning.gravity,
+        nodeOverlap: 6,
+        initialTemp: 45,
+        numIter: 350,
+        padding: options.padding ?? 48
       };
+    }
     case "orthogonal":
       return {
         ...options,
@@ -216,9 +265,9 @@ export function maltegoLayoutOptions(cy, options = {}) {
         sort: compareNodes,
         condense: true,
         avoidOverlap: true,
-        avoidOverlapPadding: 28,
-        spacingFactor: 1.15,
-        padding: options.padding ?? 60
+        avoidOverlapPadding: 18,
+        spacingFactor: 1.05,
+        padding: options.padding ?? 48
       };
     default:
       return options;
@@ -227,7 +276,6 @@ export function maltegoLayoutOptions(cy, options = {}) {
 
 export function installMaltegoLayouts(cy) {
   if (cy.scratch("quasarMaltegoLayouts")) return cy;
-
   const nativeLayout = cy.layout.bind(cy);
   cy.layout = (options) => nativeLayout(maltegoLayoutOptions(cy, options));
   cy.scratch("quasarMaltegoLayouts", true);
