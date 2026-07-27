@@ -24,6 +24,13 @@ export function relationDropPadding(pointerType = "") {
     : DESKTOP_DROP_PADDING;
 }
 
+export function clearSelectionForUserPan(cy) {
+  const selected = cy?.$("node:selected");
+  if (!selected?.length) return false;
+  selected.unselect();
+  return true;
+}
+
 export function findRelationDropTarget(cy, sourceNode, padding = DESKTOP_DROP_PADDING) {
   if (!cy || !sourceNode?.length) return null;
   const sourceBox = sourceNode.renderedBoundingBox({ includeLabels: false, includeOverlays: false });
@@ -115,6 +122,10 @@ export function installGraphGestures(cy) {
   });
   cy.on("unselect", "node", (event) => {
     if (state.armedNodeId === event.target.id()) state.armedNodeId = null;
+  });
+  cy.on("dragpan", () => {
+    state.armedNodeId = null;
+    clearSelectionForUserPan(cy);
   });
   cy.on("grab", "node", (event) => {
     const node = event.target;
