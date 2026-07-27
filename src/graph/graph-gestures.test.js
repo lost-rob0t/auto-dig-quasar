@@ -1,5 +1,10 @@
+import cytoscape from "cytoscape";
 import { describe, expect, it } from "vitest";
-import { boxesOverlap, relationDropPadding } from "./graph-gestures";
+import {
+  boxesOverlap,
+  installGraphGestures,
+  relationDropPadding
+} from "./graph-gestures";
 
 describe("graph gestures", () => {
   it("detects a relation drop when node boxes overlap", () => {
@@ -24,9 +29,23 @@ describe("graph gestures", () => {
       8
     )).toBe(false);
   });
+
   it("uses a larger relation target for touch dragging", () => {
     expect(relationDropPadding("touch")).toBeGreaterThan(relationDropPadding("mouse"));
     expect(relationDropPadding("pen")).toBe(relationDropPadding("touch"));
   });
 
+  it("releases selection when the user drag-pans the canvas", () => {
+    const cy = installGraphGestures(cytoscape({
+      headless: true,
+      elements: [{ data: { id: "selected-node" } }]
+    }));
+    const node = cy.$id("selected-node");
+
+    node.select();
+    cy.emit("dragpan");
+
+    expect(node.selected()).toBe(false);
+    cy.destroy();
+  });
 });
