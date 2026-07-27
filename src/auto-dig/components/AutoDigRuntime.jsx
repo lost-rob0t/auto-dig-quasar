@@ -11,6 +11,10 @@ function documentsFromEvent(event) {
   return [];
 }
 
+function documentIds(documents) {
+  return documents.map((document) => document?._id).filter(Boolean);
+}
+
 export default function AutoDigRuntime() {
   const { bridge, connected, datasetId } = useAutoDig();
   const {
@@ -22,6 +26,42 @@ export default function AutoDigRuntime() {
   const location = useLocation();
   const navigate = useNavigate();
   const loadedDataset = useRef("");
+  const pendingHostWrites = useRef(new Map());
+
+  function queueHostWrites(documents) {
+    for (const id of documentIds(documents)) {
+      pendingHostWrites.current.set(id, (pendingHostWrites.current.get(id) || 0) + 1);
+    }
+  }
+
+  function releaseHostWrite(id) {
+    const count = pendingHostWrites.current.get(id) || 0;
+    if (count <= 1) pendingHostWrites.current.delete(id);
+    else pendingHostWrites.current.set(id, count - 1);
+  }
+
+  function consumeHostWrite(id) {
+    if (!pendingHostWrites.current.has(id)) return false;
+    releaseHostWrite(id);
+    return true;
+  }
+
+  async function importHostDocuments(documents) {
+    queueHostWrites(documents);
+    let savedIds = new Set();
+    try {
+      const report = await bulkSaveDocuments(documents, { replace: true, atomic: false });
+      savedIds = new Set(report.saved?.map((item) => item.id).filter(Boolean) || []);
+      return report;
+    } catch (error) {
+      savedIds = new Set(error?.report?.saved?.map((item) => item.id).filter(Boolean) || []);
+      throw error;
+    } finally {
+      for (const id of documentIds(documents)) {
+        if (!savedIds.has(id)) releaseHostWrite(id);
+      }
+    }
+  }
 
   useEffect(() => {
     if (!bridge || !connected || !datasetId || loadedDataset.current === datasetId) return undefined;
@@ -31,8 +71,8 @@ export default function AutoDigRuntime() {
         if (!active) return;
         const documents = Array.isArray(dataset.documents) ? dataset.documents : [];
         if (documents.length) {
-          const report = await bulkSaveDocuments(documents, { replace: true, atomic: false });
-          const ids = report.saved?.map((item) => item.id).filter(Boolean) || documents.map((item) => item._id).filter(Boolean);
+          const report = await importHostDocuments(documents);
+          const ids = report.saved?.map((item) => item.id).filter(Boolean) || documentIds(documents);
           if (ids.length) addDocumentsToActiveGraph(ids);
         }
         loadedDataset.current = datasetId;
@@ -48,8 +88,8 @@ export default function AutoDigRuntime() {
       if (event.type === "actor-findings" || event.type === "dataset-documents") {
         const documents = documentsFromEvent(event);
         if (!documents.length) return;
-        bulkSaveDocuments(documents, { replace: true, atomic: false })
-          .then(() => addDocumentsToActiveGraph(documents.map((document) => document._id).filter(Boolean)))
+        importHostDocuments(documents)
+          .then(() => addDocumentsToActiveGraph(documentIds(documents)))
           .catch((error) => setNotice({ kind: "error", message: error.message }));
       }
       if (event.type === "theme-changed" && typeof event.payload?.theme === "string") {
@@ -66,6 +106,7 @@ export default function AutoDigRuntime() {
     return watchDocuments((change) => {
       const document = change?.doc;
       if (!document || change.deleted || document._id?.startsWith("_design/")) return;
+      if (consumeHostWrite(document._id)) return;
       const save = document.dtype === "relation"
         ? bridge.saveRelation(document)
         : bridge.saveDocument(document);
