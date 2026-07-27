@@ -1,0 +1,209 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${STARINTEL_HOME:-$HOME/starintel}"
+INSTALL=0
+VALIDATE=0
+ALLOW_ROOT=0
+
+while (($#)); do
+  case "$1" in
+    --install) INSTALL=1 ;;
+    --validate) VALIDATE=1 ;;
+    --allow-root) ALLOW_ROOT=1 ;;
+    --root)
+      shift
+      ROOT="${1:?missing value for --root}"
+      ;;
+    *)
+      printf 'unknown option: %s\n' "$1" >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
+
+if [[ ${EUID:-$(id -u)} -eq 0 && $ALLOW_ROOT -ne 1 ]]; then
+  printf 'refusing to bootstrap as root; pass --allow-root only in a controlled container\n' >&2
+  exit 1
+fi
+
+for command in git python3; do
+  command -v "$command" >/dev/null || {
+    printf 'missing required command: %s\n' "$command" >&2
+    exit 1
+  }
+done
+
+ROOT="$(python3 -c 'import os,sys; print(os.path.abspath(os.path.expanduser(sys.argv[1])))' "$ROOT")"
+REPOS="$ROOT/repos"
+mkdir -p "$REPOS" "$ROOT/data" "$ROOT/cache" "$ROOT/logs" "$ROOT/artifacts" "$ROOT/state" "$ROOT/bin"
+
+MANIFEST_SOURCE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/starintel-workspace.json"
+if [[ ! -f "$MANIFEST_SOURCE" ]]; then
+  printf 'workspace manifest not found: %s\n' "$MANIFEST_SOURCE" >&2
+  exit 1
+fi
+cp "$MANIFEST_SOURCE" "$ROOT/workspace-template.json"
+
+mapfile -t REPOSITORIES < <(
+  python3 - "$MANIFEST_SOURCE" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    manifest = json.load(handle)
+for item in manifest["repositories"]:
+    required = "required" if item.get("required") else "optional"
+    print("|".join((item["name"], item["repository"], item["role"], required)))
+PY
+)
+
+DEFAULT_BRANCH=""
+repo_default_branch() {
+  local remote="$1"
+  local symref
+  symref="$(git ls-remote --symref "$remote" HEAD 2>/dev/null | awk '/^ref:/ {sub("refs/heads/", "", $2); print $2; exit}')"
+  printf '%s' "${symref:-main}"
+}
+
+bootstrap_repo() {
+  local name="$1"
+  local repository="$2"
+  local role="$3"
+  local requirement="$4"
+  local directory="$REPOS/$name"
+  local remote="https://github.com/$repository.git"
+
+  if [[ -d "$directory/.git" ]]; then
+    printf 'update  %-28s %s\n' "$name" "$role"
+    git -C "$directory" fetch --all --prune
+  elif [[ -e "$directory" ]]; then
+    printf 'blocked %-28s path exists but is not a git repository\n' "$name" >&2
+    return 1
+  else
+    printf 'clone   %-28s %s\n' "$name" "$role"
+    git clone "$remote" "$directory"
+  fi
+
+  DEFAULT_BRANCH="$(repo_default_branch "$remote")"
+  if [[ -z "$(git -C "$directory" status --porcelain)" ]]; then
+    if git -C "$directory" show-ref --verify --quiet "refs/remotes/origin/$DEFAULT_BRANCH"; then
+      git -C "$directory" checkout "$DEFAULT_BRANCH" >/dev/null 2>&1 || true
+      git -C "$directory" merge --ff-only "origin/$DEFAULT_BRANCH" >/dev/null 2>&1 || true
+    fi
+  else
+    printf 'dirty   %-28s local changes preserved\n' "$name"
+  fi
+
+  if [[ "$name" == "auto-dig-quasar" ]]; then
+    git -C "$directory" remote set-url origin git@github.com:lost-rob0t/auto-dig-quasar.git
+    if git -C "$directory" remote get-url upstream >/dev/null 2>&1; then
+      git -C "$directory" remote set-url upstream git@github.com:lost-rob0t/quasar-ui.git
+    else
+      git -C "$directory" remote add upstream git@github.com:lost-rob0t/quasar-ui.git
+    fi
+  fi
+
+  if [[ $INSTALL -eq 1 ]]; then
+    if [[ -f "$directory/package-lock.json" ]] && command -v npm >/dev/null; then
+      printf 'install %-28s npm ci\n' "$name"
+      npm --prefix "$directory" ci
+    elif [[ -f "$directory/pyproject.toml" ]] && command -v python3 >/dev/null; then
+      printf 'check   %-28s python project detected\n' "$name"
+      python3 -m compileall -q "$directory"
+    elif [[ -f "$directory/flake.nix" ]] && command -v nix >/dev/null; then
+      printf 'check   %-28s nix flake metadata\n' "$name"
+      nix flake metadata "$directory" >/dev/null
+    fi
+  fi
+
+  if [[ $VALIDATE -eq 1 ]]; then
+    if [[ "$name" == "auto-dig-quasar" || "$name" == "quasar-ui" ]]; then
+      npm --prefix "$directory" run check
+      npm --prefix "$directory" test
+      npm --prefix "$directory" run build
+    elif [[ "$name" == "starintel-gpt-auto-dig" && -f "$directory/scripts/validate-for-merge.py" ]]; then
+      python3 "$directory/scripts/validate-for-merge.py" --site
+    fi
+  fi
+
+  return 0
+}
+
+FAILURES=0
+for item in "${REPOSITORIES[@]}"; do
+  IFS='|' read -r name repository role requirement <<<"$item"
+  if ! bootstrap_repo "$name" "$repository" "$role" "$requirement"; then
+    if [[ "$requirement" == "required" ]]; then
+      FAILURES=$((FAILURES + 1))
+    fi
+  fi
+done
+
+python3 - "$ROOT" "$MANIFEST_SOURCE" <<'PY'
+import json
+import os
+import shutil
+import subprocess
+import sys
+from datetime import datetime, timezone
+
+root, manifest_path = sys.argv[1:]
+with open(manifest_path, encoding="utf-8") as handle:
+    manifest = json.load(handle)
+
+repos = []
+for item in manifest["repositories"]:
+    path = os.path.join(root, "repos", item["name"])
+    state = {
+        **item,
+        "path": path,
+        "present": os.path.isdir(os.path.join(path, ".git")),
+    }
+    if state["present"]:
+        def git(*args):
+            return subprocess.run(
+                ["git", "-C", path, *args],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            ).stdout.strip()
+
+        state.update(
+            default_branch=git("remote", "show", "origin").split("HEAD branch: ")[-1].splitlines()[0]
+            if "HEAD branch: " in git("remote", "show", "origin")
+            else None,
+            branch=git("branch", "--show-current") or None,
+            commit=git("rev-parse", "HEAD") or None,
+            dirty=bool(git("status", "--porcelain")),
+            origin=git("remote", "get-url", "origin") or None,
+            upstream=git("remote", "get-url", "upstream") or None,
+        )
+    repos.append(state)
+
+tools = {}
+for name in ("git", "node", "npm", "python3", "sbcl", "ros", "nim", "swipl", "nix", "docker"):
+    tools[name] = shutil.which(name)
+
+report = {
+    "generated_at": datetime.now(timezone.utc).isoformat(),
+    "workspace_root": root,
+    "repositories": repos,
+    "toolchains": tools,
+}
+with open(os.path.join(root, "workspace.json"), "w", encoding="utf-8") as handle:
+    json.dump(report, handle, indent=2)
+with open(os.path.join(root, "bootstrap-report.json"), "w", encoding="utf-8") as handle:
+    json.dump(report, handle, indent=2)
+PY
+
+printf '\nStarIntel workspace: %s\n' "$ROOT"
+printf 'Workspace report:   %s/workspace.json\n' "$ROOT"
+printf 'Bootstrap report:   %s/bootstrap-report.json\n' "$ROOT"
+
+if [[ $FAILURES -gt 0 ]]; then
+  printf '%d required repositories failed to bootstrap\n' "$FAILURES" >&2
+  exit 1
+fi
