@@ -1,0 +1,132 @@
+name: Sync Quasar upstream
+
+on:
+  schedule:
+    - cron: "17 8 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: quasar-upstream-sync
+  cancel-in-progress: false
+
+env:
+  UPSTREAM_REPOSITORY: lost-rob0t/quasar-ui
+  UPSTREAM_BRANCH: main
+  AUTO_DIG_REPOSITORY: lost-rob0t/starintel-gpt-auto-dig
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - name: Fetch upstream
+        run: |
+          git remote add upstream "https://github.com/${UPSTREAM_REPOSITORY}.git" 2>/dev/null || git remote set-url upstream "https://github.com/${UPSTREAM_REPOSITORY}.git"
+          git fetch --prune upstream "${UPSTREAM_BRANCH}"
+          git fetch --prune origin
+      - name: Detect new commits
+        id: detect
+        run: |
+          range="$(git rev-parse HEAD)..$(git rev-parse upstream/${UPSTREAM_BRANCH})"
+          count="$(git rev-list --count "$range")"
+          echo "range=$range" >> "$GITHUB_OUTPUT"
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          git log --oneline "$range" > /tmp/upstream-commits.txt || true
+      - name: Stop when current
+        if: steps.detect.outputs.count == '0'
+        run: echo "Fork already contains upstream/${UPSTREAM_BRANCH}."
+      - name: Create sync branch and merge
+        if: steps.detect.outputs.count != '0'
+        id: merge
+        shell: bash
+        run: |
+          branch="sync/quasar-$(date -u +%F)"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          git checkout -b "$branch"
+          set +e
+          git merge --no-edit "upstream/${UPSTREAM_BRANCH}" > /tmp/merge.log 2>&1
+          status=$?
+          set -e
+          if [[ $status -ne 0 ]]; then
+            git diff --name-only --diff-filter=U > /tmp/conflicts.txt
+            git merge --abort
+            mkdir -p .github/upstream-sync
+            {
+              echo "# Upstream sync conflict"
+              echo
+              echo "Range: \`${{ steps.detect.outputs.range }}\`"
+              echo
+              echo "Conflicted files:"
+              sed 's/^/- `&`/' /tmp/conflicts.txt
+            } > .github/upstream-sync/latest-conflict.md
+            git add .github/upstream-sync/latest-conflict.md
+            git commit -m "Record upstream sync conflict"
+            echo "conflict=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "conflict=false" >> "$GITHUB_OUTPUT"
+          fi
+          git push -u origin "$branch"
+      - name: Validate Quasar
+        if: steps.detect.outputs.count != '0' && steps.merge.outputs.conflict == 'false'
+        id: quasar
+        run: |
+          npm ci
+          npm run format:check
+          npm run lint
+          npm run typecheck
+          npm test
+          VITE_BASE_PATH=/quasar/app/ npm run build
+      - name: Validate Auto-Dig integration
+        if: steps.detect.outputs.count != '0' && steps.merge.outputs.conflict == 'false'
+        id: autodig
+        run: |
+          git clone --depth 1 "https://github.com/${AUTO_DIG_REPOSITORY}.git" ../auto-dig
+          python3 ../auto-dig/scripts/build-auto-dig-quasar.py \
+            --auto-dig-root ../auto-dig \
+            --quasar-dist "$PWD/dist" \
+            --quasar-fork-commit "$(git rev-parse HEAD)" \
+            --quasar-upstream-commit "$(git rev-parse upstream/${UPSTREAM_BRANCH})"
+          python3 ../auto-dig/scripts/validate-for-merge.py --site
+      - name: Open sync pull request
+        if: steps.detect.outputs.count != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for label in upstream-sync quasar needs-review conflict; do
+            gh label create "$label" --force >/dev/null 2>&1 || true
+          done
+          labels="upstream-sync,quasar,needs-review"
+          if [[ "${{ steps.merge.outputs.conflict }}" == "true" ]]; then labels="$labels,conflict"; fi
+          commits="$(cat /tmp/upstream-commits.txt)"
+          body=$(cat <<BODY
+          ## Upstream range
+
+          \`${{ steps.detect.outputs.range }}\`
+
+          ## Commits
+
+          \`\`\`
+          $commits
+          \`\`\`
+
+          ## Validation
+
+          - conflict: ${{ steps.merge.outputs.conflict }}
+          - Quasar checks: ${{ steps.quasar.outcome || 'not-run' }}
+          - Auto-Dig checks: ${{ steps.autodig.outcome || 'not-run' }}
+
+          This workflow never force-pushes, rewrites fork history, or merges failed validation automatically.
+          BODY
+          )
+          gh pr create --base main --head "${{ steps.merge.outputs.branch }}" --title "Sync Quasar upstream $(date -u +%F)" --body "$body" --label "$labels" || true
