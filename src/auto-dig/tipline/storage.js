@@ -4,10 +4,10 @@ const PREFIX = "auto-dig:tip:";
 
 export function createTip(values = {}) {
   const now = new Date().toISOString();
-  const id = values.id || `${PREFIX}${crypto.randomUUID()}`;
+  const id = values._id || values.id || `${PREFIX}${crypto.randomUUID()}`;
   return {
     _id: id,
-    tip_id: id.slice(PREFIX.length),
+    tip_id: values.tip_id || id.slice(PREFIX.length),
     title: values.title || "Untitled tip",
     body: values.body || "",
     source: values.source || "",
