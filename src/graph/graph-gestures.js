@@ -2,12 +2,17 @@ const GESTURE_SCRATCH = "quasar-graph-gestures";
 const DESKTOP_DROP_PADDING = 14;
 const TOUCH_DROP_PADDING = 30;
 const DRAG_THRESHOLD_SQUARED = 36;
-const PAN_SELECTION_RESTORE_DELAY_MS = 180;
+const USER_NAVIGATION_GUARD_MS = 360;
 
 function distanceSquared(left, right) {
   const dx = left.x - right.x;
   const dy = left.y - right.y;
   return dx * dx + dy * dy;
+}
+
+function editableTarget(target) {
+  return target instanceof HTMLElement
+    && Boolean(target.closest("input, textarea, select, button, [contenteditable='true']"));
 }
 
 export function boxesOverlap(left, right, padding = 0) {
@@ -25,34 +30,165 @@ export function relationDropPadding(pointerType = "") {
     : DESKTOP_DROP_PADDING;
 }
 
-function restorePanSelection(cy, state) {
-  const ids = state.panSelectionIds;
-  state.panSelectionIds = [];
-  state.panRestoreTimer = null;
-
-  for (const id of ids) {
-    const node = cy.$id(id);
-    if (node?.length && !node.selected()) node.select();
-  }
+export function shouldStartManualPan(event, spacePressed = false) {
+  if (!event || event.pointerType === "touch" || event.pointerType === "pen") return false;
+  return event.button === 1 || (spacePressed && event.button === 0);
 }
 
-export function suspendSelectionForUserPan(
-  cy,
+export function shouldStartTouchPan(event) {
+  return event?.pointerType === "touch" || event?.pointerType === "pen";
+}
+
+export function markUserNavigation(
   state,
-  delay = PAN_SELECTION_RESTORE_DELAY_MS
+  now = Date.now(),
+  duration = USER_NAVIGATION_GUARD_MS
 ) {
-  if (!cy || !state) return false;
+  if (!state) return 0;
+  state.userNavigationUntil = Math.max(state.userNavigationUntil || 0, now + duration);
+  return state.userNavigationUntil;
+}
 
-  const selected = cy.$("node:selected");
-  if (!state.panSelectionIds.length && selected?.length) {
-    state.panSelectionIds = selected.map((node) => node.id());
-    selected.unselect();
-  }
-  if (!state.panSelectionIds.length) return false;
+export function isUserNavigationActive(state, now = Date.now()) {
+  return Boolean(state && now < (state.userNavigationUntil || 0));
+}
 
-  clearTimeout(state.panRestoreTimer);
-  state.panRestoreTimer = setTimeout(() => restorePanSelection(cy, state), delay);
+export function selectSingleNode(cy, node) {
+  if (!cy || !node?.length) return false;
+
+  const apply = () => {
+    const otherNodes = cy.$("node:selected").not(node);
+    if (otherNodes.length) otherNodes.unselect();
+    if (!node.selected()) node.select();
+  };
+
+  if (typeof cy.batch === "function") cy.batch(apply);
+  else apply();
   return true;
+}
+
+export function installUserNavigationGuard(cy, state) {
+  const nativePanBy = cy.panBy.bind(cy);
+  state.nativePanBy = nativePanBy;
+  cy.panBy = (...args) => (
+    isUserNavigationActive(state) ? cy : nativePanBy(...args)
+  );
+
+  return () => {
+    cy.panBy = nativePanBy;
+    state.nativePanBy = null;
+  };
+}
+
+function installPanControls(cy, state) {
+  const container = cy.container?.();
+  if (!container) return () => {};
+
+  const baseUserPanning = cy.userPanningEnabled();
+  const previousTabIndex = container.getAttribute("tabindex");
+  if (previousTabIndex === null) container.tabIndex = 0;
+
+  const finishManualPan = (event) => {
+    if (!state.manualPan || event.pointerId !== state.manualPan.pointerId) return;
+    try {
+      container.releasePointerCapture?.(event.pointerId);
+    } catch {
+      // Pointer capture may already have been released by the browser.
+    }
+    state.manualPan = null;
+  };
+
+  const releasePointer = (event) => {
+    finishManualPan(event);
+    if (!state.touchPointers.delete(event.pointerId)) return;
+    if (!state.touchPointers.size) cy.userPanningEnabled(baseUserPanning);
+  };
+
+  const reset = () => {
+    state.manualPan = null;
+    state.touchPointers.clear();
+    state.spacePressed = false;
+    cy.userPanningEnabled(baseUserPanning);
+  };
+
+  const onPointerDown = (event) => {
+    container.focus({ preventScroll: true });
+
+    if (shouldStartTouchPan(event)) {
+      state.touchPointers.add(event.pointerId);
+      cy.userPanningEnabled(true);
+      return;
+    }
+
+    if (!shouldStartManualPan(event, state.spacePressed)) return;
+    state.manualPan = {
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY
+    };
+    container.setPointerCapture?.(event.pointerId);
+    markUserNavigation(state);
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  const onPointerMove = (event) => {
+    const pan = state.manualPan;
+    if (!pan || event.pointerId !== pan.pointerId) return;
+    const x = event.clientX;
+    const y = event.clientY;
+    const shift = { x: x - pan.x, y: y - pan.y };
+    pan.x = x;
+    pan.y = y;
+
+    if (shift.x || shift.y) {
+      markUserNavigation(state);
+      state.nativePanBy?.(shift);
+    }
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  const onPointerEnter = () => { state.pointerInside = true; };
+  const onPointerLeave = () => { state.pointerInside = false; };
+  const onKeyDown = (event) => {
+    if (
+      event.code !== "Space"
+      || event.repeat
+      || editableTarget(event.target)
+      || !state.pointerInside
+    ) return;
+    state.spacePressed = true;
+    event.preventDefault();
+  };
+  const onKeyUp = (event) => {
+    if (event.code === "Space") state.spacePressed = false;
+  };
+
+  container.addEventListener("pointerdown", onPointerDown, true);
+  container.addEventListener("pointermove", onPointerMove, true);
+  container.addEventListener("pointerenter", onPointerEnter);
+  container.addEventListener("pointerleave", onPointerLeave);
+  window.addEventListener("pointerup", releasePointer);
+  window.addEventListener("pointercancel", releasePointer);
+  window.addEventListener("keydown", onKeyDown);
+  window.addEventListener("keyup", onKeyUp);
+  window.addEventListener("blur", reset);
+
+  return () => {
+    container.removeEventListener("pointerdown", onPointerDown, true);
+    container.removeEventListener("pointermove", onPointerMove, true);
+    container.removeEventListener("pointerenter", onPointerEnter);
+    container.removeEventListener("pointerleave", onPointerLeave);
+    window.removeEventListener("pointerup", releasePointer);
+    window.removeEventListener("pointercancel", releasePointer);
+    window.removeEventListener("keydown", onKeyDown);
+    window.removeEventListener("keyup", onKeyUp);
+    window.removeEventListener("blur", reset);
+    if (previousTabIndex === null) container.removeAttribute("tabindex");
+    else container.setAttribute("tabindex", previousTabIndex);
+    cy.userPanningEnabled(baseUserPanning);
+  };
 }
 
 export function findRelationDropTarget(cy, sourceNode, padding = DESKTOP_DROP_PADDING) {
@@ -135,10 +271,17 @@ export function installGraphGestures(cy) {
     armedNodeId: null,
     drag: null,
     panningEnabled: true,
-    panSelectionIds: [],
-    panRestoreTimer: null
+    pointerInside: false,
+    spacePressed: false,
+    manualPan: null,
+    touchPointers: new Set(),
+    userNavigationUntil: 0,
+    nativePanBy: null
   };
   cy.scratch(GESTURE_SCRATCH, state);
+
+  const restorePanBy = installUserNavigationGuard(cy, state);
+  const removePanControls = installPanControls(cy, state);
 
   cy.on("tap", (event) => {
     if (event.target === cy) state.armedNodeId = null;
@@ -149,9 +292,12 @@ export function installGraphGestures(cy) {
   cy.on("unselect", "node", (event) => {
     if (state.armedNodeId === event.target.id()) state.armedNodeId = null;
   });
-  cy.on("dragpan", () => {
+  cy.on("dragpan scrollzoom pinchzoom", () => {
     state.armedNodeId = null;
-    suspendSelectionForUserPan(cy, state);
+    markUserNavigation(state);
+  });
+  cy.on("cxttapstart cxttap", "node", (event) => {
+    selectSingleNode(cy, event.target);
   });
   cy.on("grab", "node", (event) => {
     const node = event.target;
@@ -207,7 +353,10 @@ export function installGraphGestures(cy) {
     if (state.drag?.moved) return;
     emitContextTap(event);
   });
-  cy.on("destroy", () => clearTimeout(state.panRestoreTimer));
+  cy.on("destroy", () => {
+    removePanControls();
+    restorePanBy();
+  });
 
   return cy;
 }
