@@ -1,11 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   boxesOverlap,
+  installUserNavigationGuard,
+  isUserNavigationActive,
+  markUserNavigation,
   relationDropPadding,
-  suspendSelectionForUserPan
+  selectSingleNode,
+  shouldStartManualPan,
+  shouldStartTouchPan
 } from "./graph-gestures";
 
-afterEach(() => vi.useRealTimers());
+afterEach(() => vi.restoreAllMocks());
 
 describe("graph gestures", () => {
   it("detects a relation drop when node boxes overlap", () => {
@@ -36,44 +41,62 @@ describe("graph gestures", () => {
     expect(relationDropPadding("pen")).toBe(relationDropPadding("touch"));
   });
 
-  it("restores selected nodes after user panning settles", () => {
-    vi.useFakeTimers();
-    let selected = true;
-    const node = {
-      id: () => "node-a",
-      selected: () => selected,
-      select: vi.fn(() => { selected = true; })
-    };
-    const selectedCollection = {
-      get length() { return selected ? 1 : 0; },
-      map: (callback) => selected ? [callback(node)] : [],
-      unselect: vi.fn(() => { selected = false; })
-    };
-    const cy = {
-      $: vi.fn(() => selectedCollection),
-      $id: vi.fn(() => ({ length: 1, selected: node.selected, select: node.select }))
-    };
-    const state = { panSelectionIds: [], panRestoreTimer: null };
-
-    expect(suspendSelectionForUserPan(cy, state, 180)).toBe(true);
-    expect(selected).toBe(false);
-
-    vi.advanceTimersByTime(100);
-    expect(suspendSelectionForUserPan(cy, state, 180)).toBe(true);
-    vi.advanceTimersByTime(179);
-    expect(selected).toBe(false);
-
-    vi.advanceTimersByTime(1);
-    expect(selected).toBe(true);
-    expect(node.select).toHaveBeenCalledOnce();
+  it("leaves ordinary left drag available for box selection", () => {
+    expect(shouldStartManualPan({ pointerType: "mouse", button: 0 }, false)).toBe(false);
   });
 
-  it("does nothing when a canvas pan has no selected nodes", () => {
-    const cy = {
-      $: vi.fn(() => ({ length: 0, map: vi.fn(), unselect: vi.fn() }))
-    };
-    const state = { panSelectionIds: [], panRestoreTimer: null };
+  it("starts manual pan for middle drag or Space plus left drag", () => {
+    expect(shouldStartManualPan({ pointerType: "mouse", button: 1 }, false)).toBe(true);
+    expect(shouldStartManualPan({ pointerType: "mouse", button: 0 }, true)).toBe(true);
+  });
 
-    expect(suspendSelectionForUserPan(cy, state)).toBe(false);
+  it("uses native panning for touch and pen input", () => {
+    expect(shouldStartTouchPan({ pointerType: "touch" })).toBe(true);
+    expect(shouldStartTouchPan({ pointerType: "pen" })).toBe(true);
+    expect(shouldStartTouchPan({ pointerType: "mouse" })).toBe(false);
+  });
+
+  it("right-click selection replaces every other selected node", () => {
+    const unselect = vi.fn();
+    const select = vi.fn();
+    const node = {
+      length: 1,
+      selected: vi.fn(() => false),
+      select
+    };
+    const selected = {
+      not: vi.fn(() => ({ length: 2, unselect }))
+    };
+    const cy = {
+      $: vi.fn(() => selected),
+      batch: vi.fn((callback) => callback())
+    };
+
+    expect(selectSingleNode(cy, node)).toBe(true);
+    expect(cy.$).toHaveBeenCalledWith("node:selected");
+    expect(selected.not).toHaveBeenCalledWith(node);
+    expect(unselect).toHaveBeenCalledOnce();
+    expect(select).toHaveBeenCalledOnce();
+  });
+
+  it("blocks viewport recentering while user navigation is active", () => {
+    const nativePanBy = vi.fn();
+    const cy = { panBy: nativePanBy };
+    const state = { userNavigationUntil: 0, nativePanBy: null };
+    const restore = installUserNavigationGuard(cy, state);
+
+    markUserNavigation(state, 100, 360);
+    expect(isUserNavigationActive(state, 459)).toBe(true);
+    expect(isUserNavigationActive(state, 460)).toBe(false);
+
+    vi.spyOn(Date, "now").mockReturnValue(200);
+    expect(cy.panBy({ x: 10, y: 5 })).toBe(cy);
+    expect(nativePanBy).not.toHaveBeenCalled();
+
+    Date.now.mockReturnValue(500);
+    cy.panBy({ x: 10, y: 5 });
+    expect(nativePanBy).toHaveBeenCalledWith({ x: 10, y: 5 });
+
+    restore();
   });
 });
