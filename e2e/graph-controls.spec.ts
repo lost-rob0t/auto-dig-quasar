@@ -1,4 +1,38 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
+
+type GraphSnapshot = {
+  node: { x: number; y: number };
+  pan: { x: number; y: number };
+  zoom: number;
+};
+
+async function graphSnapshot(canvas: Locator): Promise<GraphSnapshot> {
+  return canvas.evaluate((element) => {
+    const graphElement = element as HTMLElement & {
+      __quasarGraphAdapter?: {
+        nodes: () => { first: () => { length: number; renderedPosition: () => { x: number; y: number } } };
+        pan: () => { x: number; y: number };
+        zoom: () => number;
+      };
+    };
+    const cy = graphElement.__quasarGraphAdapter;
+    if (!cy) throw new Error("Development graph adapter is unavailable");
+    const node = cy.nodes().first();
+    if (!node.length) throw new Error("Graph node is unavailable");
+    return {
+      node: node.renderedPosition(),
+      pan: cy.pan(),
+      zoom: cy.zoom()
+    };
+  });
+}
+
+function backgroundPoint(node: { x: number; y: number }, width: number, height: number) {
+  return {
+    x: node.x < width / 2 ? width - 100 : 100,
+    y: height - 100
+  };
+}
 
 test("uses left click select, left drag pan, and right drag box select", async ({ page }) => {
   await page.setViewportSize({ width: 1200, height: 800 });
@@ -6,6 +40,7 @@ test("uses left click select, left drag pan, and right drag box select", async (
 
   const suffix = Date.now().toString(36);
   const stage = page.locator(".graph-stage");
+  const canvas = page.locator(".graph-canvas");
   await stage.click({ button: "right", position: { x: 220, y: 220 } });
   await page.getByRole("button", { name: "Create person here" }).click();
 
@@ -25,64 +60,83 @@ test("uses left click select, left drag pan, and right drag box select", async (
   await page.getByRole("button", { name: "Focus selection" }).click();
   await page.waitForTimeout(400);
 
-  const bounds = await stage.boundingBox();
+  const bounds = await canvas.boundingBox();
   expect(bounds).not.toBeNull();
   const width = bounds?.width || 0;
   const height = bounds?.height || 0;
   const origin = { x: bounds?.x || 0, y: bounds?.y || 0 };
-  const center = {
-    x: Math.round(width / 2),
-    y: Math.round(height / 2)
-  };
-  const background = {
-    x: 100,
-    y: Math.max(100, Math.round(height - 100))
-  };
-  const panStart = {
-    x: 180,
-    y: Math.max(180, Math.round(height - 170))
-  };
-  const panEnd = {
-    x: 480,
-    y: Math.max(300, Math.round(height - 50))
-  };
 
-  await page.mouse.move(origin.x + center.x, origin.y + center.y);
+  const beforeZoom = await graphSnapshot(canvas);
+  await page.mouse.move(origin.x + beforeZoom.node.x, origin.y + beforeZoom.node.y);
   await page.mouse.wheel(0, 900);
   await page.waitForTimeout(200);
+  const afterZoom = await graphSnapshot(canvas);
+  expect(afterZoom.zoom).toBeLessThan(beforeZoom.zoom);
+  await page.waitForTimeout(500);
+  const settledZoom = await graphSnapshot(canvas);
+  expect(settledZoom.zoom).toBeCloseTo(afterZoom.zoom, 5);
 
-  await stage.click({ position: background });
+  let background = backgroundPoint(settledZoom.node, width, height);
+  await canvas.click({ position: background });
   await expect(selectionHeading).toContainText("0");
 
-  await stage.click({ position: center });
+  await canvas.click({ position: settledZoom.node });
   await expect(selectionHeading).toContainText("1");
 
-  await stage.click({ position: background });
+  background = backgroundPoint(settledZoom.node, width, height);
+  await canvas.click({ position: background });
+  await expect(selectionHeading).toContainText("0");
+
+  const beforePan = await graphSnapshot(canvas);
+  const panStart = beforePan.node.x >= width / 2
+    ? { x: 180, y: height - 170 }
+    : { x: width - 180, y: height - 170 };
+  const panEnd = beforePan.node.x >= width / 2
+    ? { x: 480, y: height - 50 }
+    : { x: width - 480, y: height - 50 };
+  const expectedShift = {
+    x: panEnd.x - panStart.x,
+    y: panEnd.y - panStart.y
+  };
+
   await page.mouse.move(origin.x + panStart.x, origin.y + panStart.y);
   await page.mouse.down({ button: "left" });
   await page.mouse.move(origin.x + panEnd.x, origin.y + panEnd.y, { steps: 12 });
   await page.mouse.up({ button: "left" });
+  await page.waitForTimeout(500);
 
-  await stage.click({ button: "right", position: center });
+  const afterPan = await graphSnapshot(canvas);
+  expect(afterPan.pan.x - beforePan.pan.x).toBeCloseTo(expectedShift.x, 0);
+  expect(afterPan.pan.y - beforePan.pan.y).toBeCloseTo(expectedShift.y, 0);
+  expect(afterPan.node.x - beforePan.node.x).toBeCloseTo(expectedShift.x, 0);
+  expect(afterPan.node.y - beforePan.node.y).toBeCloseTo(expectedShift.y, 0);
+
+  await canvas.click({ button: "right", position: beforePan.node });
   await expect(page.getByRole("menu", { name: "canvas actions" })).toBeVisible();
   await page.keyboard.press("Escape");
 
-  const shifted = {
-    x: center.x + (panEnd.x - panStart.x),
-    y: center.y + (panEnd.y - panStart.y)
-  };
-  await stage.click({ button: "right", position: shifted });
+  await canvas.click({ button: "right", position: afterPan.node });
   await expect(page.getByRole("menu", { name: "node actions" })).toBeVisible();
+  await expect(selectionHeading).toContainText("1");
   await page.keyboard.press("Escape");
 
-  await stage.click({ position: background });
+  background = backgroundPoint(afterPan.node, width, height);
+  await canvas.click({ position: background });
   await expect(selectionHeading).toContainText("0");
 
-  await page.mouse.move(origin.x + shifted.x - 70, origin.y + shifted.y - 70);
+  const boxStart = {
+    x: Math.max(5, afterPan.node.x - 70),
+    y: Math.max(5, afterPan.node.y - 70)
+  };
+  const boxEnd = {
+    x: Math.min(width - 5, afterPan.node.x + 70),
+    y: Math.min(height - 5, afterPan.node.y + 70)
+  };
+  await page.mouse.move(origin.x + boxStart.x, origin.y + boxStart.y);
   await page.mouse.down({ button: "right" });
-  await page.mouse.move(origin.x + shifted.x + 70, origin.y + shifted.y + 70, { steps: 10 });
+  await page.mouse.move(origin.x + boxEnd.x, origin.y + boxEnd.y, { steps: 10 });
   await page.mouse.up({ button: "right" });
 
   await expect(selectionHeading).toContainText("1");
-  await expect(page.getByRole("menu", { name: /actions/ })).toBeHidden();
+  await expect(page.locator(".graph-context-menu")).toBeHidden();
 });
