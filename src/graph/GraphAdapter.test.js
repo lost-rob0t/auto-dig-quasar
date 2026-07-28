@@ -22,14 +22,14 @@ describe("automaticNodePosition", () => {
     }
   });
 
-  it("reserves ordinary left drag for box selection", () => {
+  it("uses native left drag for viewport panning", () => {
     const cy = createGraphAdapter({
       headless: true,
       styleEnabled: false,
       elements: []
     });
 
-    expect(cy.userPanningEnabled()).toBe(false);
+    expect(cy.userPanningEnabled()).toBe(true);
     cy.destroy();
   });
 });
