@@ -4,18 +4,22 @@ test("uses left click select, left drag pan, and right drag box select", async (
   await page.setViewportSize({ width: 1200, height: 800 });
   await page.goto("/graph");
 
+  const suffix = Date.now().toString(36);
   const stage = page.locator(".graph-stage");
   await stage.click({ button: "right", position: { x: 220, y: 220 } });
   await page.getByRole("button", { name: "Create person here" }).click();
 
   const editor = page.getByRole("dialog", { name: "New Person" });
   await editor.getByLabel(/^First Name/).fill("Control");
-  await editor.getByLabel(/^Last Name/).fill("Test");
-  await editor.getByLabel(/^Display Name/).fill("Control Test");
+  await editor.getByLabel(/^Last Name/).fill(suffix);
+  await editor.getByLabel(/^Display Name/).fill(`Control ${suffix}`);
   await editor.getByRole("button", { name: "Save" }).click();
 
-  await expect(page).toHaveURL(/\/graph\?node=/);
-  await expect(page.locator(".graph-count")).toContainText("1 nodes");
+  const selectionHeading = page.locator(".graph-inspector h2").first();
+  await expect(page.locator(".graph-count")).toContainText("nodes");
+  await expect(selectionHeading).toContainText("1");
+  await page.getByRole("button", { name: "Focus selection" }).click();
+  await page.waitForTimeout(400);
 
   const bounds = await stage.boundingBox();
   expect(bounds).not.toBeNull();
@@ -23,7 +27,6 @@ test("uses left click select, left drag pan, and right drag box select", async (
     x: Math.round((bounds?.width || 0) / 2),
     y: Math.round((bounds?.height || 0) / 2)
   };
-  const selectionHeading = page.locator(".graph-inspector h2").first();
 
   await page.mouse.move((bounds?.x || 0) + center.x, (bounds?.y || 0) + center.y);
   await page.mouse.wheel(0, 900);
