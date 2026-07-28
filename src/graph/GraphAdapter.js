@@ -54,7 +54,10 @@ function installAutomaticNodePlacement(cy) {
 export class GraphAdapter {
   static create(options) {
     registerPlugins();
-    const cy = installMaltegoLayouts(cytoscape(options));
+    const cy = installMaltegoLayouts(cytoscape({
+      ...options,
+      userPanningEnabled: options.userPanningEnabled ?? false
+    }));
     installAutomaticNodePlacement(cy);
     return installGraphGestures(cy);
   }
