@@ -56,7 +56,7 @@ export class GraphAdapter {
     registerPlugins();
     const cy = installMaltegoLayouts(cytoscape({
       ...options,
-      userPanningEnabled: options.userPanningEnabled ?? false
+      userPanningEnabled: options.userPanningEnabled ?? true
     }));
     installAutomaticNodePlacement(cy);
     return installGraphGestures(cy);
