@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { automaticNodePosition } from "./GraphAdapter";
+import { automaticNodePosition, createGraphAdapter } from "./GraphAdapter";
 
 const extent = { x1: -500, y1: -300, x2: 500, y2: 300 };
 
@@ -20,5 +20,16 @@ describe("automaticNodePosition", () => {
       expect(Math.abs(position.x)).toBeLessThan(1000);
       expect(Math.abs(position.y)).toBeLessThan(1000);
     }
+  });
+
+  it("reserves ordinary left drag for box selection", () => {
+    const cy = createGraphAdapter({
+      headless: true,
+      styleEnabled: false,
+      elements: []
+    });
+
+    expect(cy.userPanningEnabled()).toBe(false);
+    cy.destroy();
   });
 });
