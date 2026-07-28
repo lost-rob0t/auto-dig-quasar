@@ -27,49 +27,60 @@ test("uses left click select, left drag pan, and right drag box select", async (
 
   const bounds = await stage.boundingBox();
   expect(bounds).not.toBeNull();
+  const width = bounds?.width || 0;
+  const height = bounds?.height || 0;
+  const origin = { x: bounds?.x || 0, y: bounds?.y || 0 };
   const center = {
-    x: Math.round((bounds?.width || 0) / 2),
-    y: Math.round((bounds?.height || 0) / 2)
+    x: Math.round(width / 2),
+    y: Math.round(height / 2)
+  };
+  const background = {
+    x: 100,
+    y: Math.max(100, Math.round(height - 100))
+  };
+  const panStart = {
+    x: 180,
+    y: Math.max(180, Math.round(height - 170))
+  };
+  const panEnd = {
+    x: 480,
+    y: Math.max(300, Math.round(height - 50))
   };
 
-  await page.mouse.move((bounds?.x || 0) + center.x, (bounds?.y || 0) + center.y);
+  await page.mouse.move(origin.x + center.x, origin.y + center.y);
   await page.mouse.wheel(0, 900);
   await page.waitForTimeout(200);
 
-  await stage.click({ position: { x: 70, y: 70 } });
+  await stage.click({ position: background });
   await expect(selectionHeading).toContainText("0");
 
   await stage.click({ position: center });
   await expect(selectionHeading).toContainText("1");
 
-  await stage.click({ position: { x: 70, y: 70 } });
-  await page.mouse.move((bounds?.x || 0) + 170, (bounds?.y || 0) + 170);
+  await stage.click({ position: background });
+  await page.mouse.move(origin.x + panStart.x, origin.y + panStart.y);
   await page.mouse.down({ button: "left" });
-  await page.mouse.move((bounds?.x || 0) + 470, (bounds?.y || 0) + 290, { steps: 12 });
+  await page.mouse.move(origin.x + panEnd.x, origin.y + panEnd.y, { steps: 12 });
   await page.mouse.up({ button: "left" });
 
   await stage.click({ button: "right", position: center });
   await expect(page.getByRole("menu", { name: "canvas actions" })).toBeVisible();
   await page.keyboard.press("Escape");
 
-  const shifted = { x: center.x + 300, y: center.y + 120 };
+  const shifted = {
+    x: center.x + (panEnd.x - panStart.x),
+    y: center.y + (panEnd.y - panStart.y)
+  };
   await stage.click({ button: "right", position: shifted });
   await expect(page.getByRole("menu", { name: "node actions" })).toBeVisible();
   await page.keyboard.press("Escape");
 
-  await stage.click({ position: { x: 70, y: 70 } });
+  await stage.click({ position: background });
   await expect(selectionHeading).toContainText("0");
 
-  await page.mouse.move(
-    (bounds?.x || 0) + shifted.x - 70,
-    (bounds?.y || 0) + shifted.y - 70
-  );
+  await page.mouse.move(origin.x + shifted.x - 70, origin.y + shifted.y - 70);
   await page.mouse.down({ button: "right" });
-  await page.mouse.move(
-    (bounds?.x || 0) + shifted.x + 70,
-    (bounds?.y || 0) + shifted.y + 70,
-    { steps: 10 }
-  );
+  await page.mouse.move(origin.x + shifted.x + 70, origin.y + shifted.y + 70, { steps: 10 });
   await page.mouse.up({ button: "right" });
 
   await expect(selectionHeading).toContainText("1");
