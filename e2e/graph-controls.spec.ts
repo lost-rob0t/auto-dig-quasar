@@ -10,14 +10,18 @@ test("uses left click select, left drag pan, and right drag box select", async (
   await page.getByRole("button", { name: "Create person here" }).click();
 
   const editor = page.getByRole("dialog", { name: "New Person" });
-  await editor.getByLabel(/^First Name/).fill("Control");
-  await editor.getByLabel(/^Last Name/).fill(suffix);
-  await editor.getByLabel(/^Display Name/).fill(`Control ${suffix}`);
+  await editor.getByLabel(/^First Name/).fill(`Control-${suffix}`);
+  await editor.getByLabel(/^Last Name/).fill(`Test-${suffix}`);
+  await editor.getByLabel(/^Display Name/).fill(`Control Test ${suffix}`);
   await editor.getByRole("button", { name: "Save" }).click();
 
   const selectionHeading = page.locator(".graph-inspector h2").first();
   await expect(page.locator(".graph-count")).toContainText("nodes");
   await expect(selectionHeading).toContainText("1");
+
+  const dismissNotice = page.getByRole("button", { name: "Dismiss notification" });
+  if (await dismissNotice.isVisible()) await dismissNotice.click();
+
   await page.getByRole("button", { name: "Focus selection" }).click();
   await page.waitForTimeout(400);
 
