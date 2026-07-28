@@ -70,7 +70,8 @@ export class GraphAdapter {
     registerPlugins();
     const cy = installMaltegoLayouts(cytoscape({
       ...options,
-      userPanningEnabled: options.userPanningEnabled ?? true
+      userPanningEnabled: options.userPanningEnabled ?? true,
+      selectionType: "single"
     }));
     const restoreUserNavigation = installUserNavigationGuard(cy);
     cy.on("destroy", restoreUserNavigation);
