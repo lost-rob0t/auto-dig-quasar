@@ -2,6 +2,7 @@ const GESTURE_SCRATCH = "quasar-graph-gestures";
 const DESKTOP_DROP_PADDING = 14;
 const TOUCH_DROP_PADDING = 30;
 const DRAG_THRESHOLD_SQUARED = 36;
+const PAN_SELECTION_RESTORE_DELAY_MS = 180;
 
 function distanceSquared(left, right) {
   const dx = left.x - right.x;
@@ -24,10 +25,33 @@ export function relationDropPadding(pointerType = "") {
     : DESKTOP_DROP_PADDING;
 }
 
-export function clearSelectionForUserPan(cy) {
-  const selected = cy?.$("node:selected");
-  if (!selected?.length) return false;
-  selected.unselect();
+function restorePanSelection(cy, state) {
+  const ids = state.panSelectionIds;
+  state.panSelectionIds = [];
+  state.panRestoreTimer = null;
+
+  for (const id of ids) {
+    const node = cy.$id(id);
+    if (node?.length && !node.selected()) node.select();
+  }
+}
+
+export function suspendSelectionForUserPan(
+  cy,
+  state,
+  delay = PAN_SELECTION_RESTORE_DELAY_MS
+) {
+  if (!cy || !state) return false;
+
+  const selected = cy.$("node:selected");
+  if (!state.panSelectionIds.length && selected?.length) {
+    state.panSelectionIds = selected.map((node) => node.id());
+    selected.unselect();
+  }
+  if (!state.panSelectionIds.length) return false;
+
+  clearTimeout(state.panRestoreTimer);
+  state.panRestoreTimer = setTimeout(() => restorePanSelection(cy, state), delay);
   return true;
 }
 
@@ -110,7 +134,9 @@ export function installGraphGestures(cy) {
   const state = {
     armedNodeId: null,
     drag: null,
-    panningEnabled: true
+    panningEnabled: true,
+    panSelectionIds: [],
+    panRestoreTimer: null
   };
   cy.scratch(GESTURE_SCRATCH, state);
 
@@ -125,7 +151,7 @@ export function installGraphGestures(cy) {
   });
   cy.on("dragpan", () => {
     state.armedNodeId = null;
-    clearSelectionForUserPan(cy);
+    suspendSelectionForUserPan(cy, state);
   });
   cy.on("grab", "node", (event) => {
     const node = event.target;
@@ -181,6 +207,7 @@ export function installGraphGestures(cy) {
     if (state.drag?.moved) return;
     emitContextTap(event);
   });
+  cy.on("destroy", () => clearTimeout(state.panRestoreTimer));
 
   return cy;
 }
