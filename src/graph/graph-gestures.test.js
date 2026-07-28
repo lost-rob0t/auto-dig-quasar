@@ -1,9 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   boxesOverlap,
-  clearSelectionForUserPan,
-  relationDropPadding
+  relationDropPadding,
+  suspendSelectionForUserPan
 } from "./graph-gestures";
+
+afterEach(() => vi.useRealTimers());
 
 describe("graph gestures", () => {
   it("detects a relation drop when node boxes overlap", () => {
@@ -34,22 +36,44 @@ describe("graph gestures", () => {
     expect(relationDropPadding("pen")).toBe(relationDropPadding("touch"));
   });
 
-  it("releases selection for a user canvas pan", () => {
-    const unselect = vi.fn();
-    const cy = {
-      $: vi.fn(() => ({ length: 1, unselect }))
+  it("restores selected nodes after user panning settles", () => {
+    vi.useFakeTimers();
+    let selected = true;
+    const node = {
+      id: () => "node-a",
+      selected: () => selected,
+      select: vi.fn(() => { selected = true; })
     };
+    const selectedCollection = {
+      get length() { return selected ? 1 : 0; },
+      map: (callback) => selected ? [callback(node)] : [],
+      unselect: vi.fn(() => { selected = false; })
+    };
+    const cy = {
+      $: vi.fn(() => selectedCollection),
+      $id: vi.fn(() => ({ length: 1, selected: node.selected, select: node.select }))
+    };
+    const state = { panSelectionIds: [], panRestoreTimer: null };
 
-    expect(clearSelectionForUserPan(cy)).toBe(true);
-    expect(cy.$).toHaveBeenCalledWith("node:selected");
-    expect(unselect).toHaveBeenCalledOnce();
+    expect(suspendSelectionForUserPan(cy, state, 180)).toBe(true);
+    expect(selected).toBe(false);
+
+    vi.advanceTimersByTime(100);
+    expect(suspendSelectionForUserPan(cy, state, 180)).toBe(true);
+    vi.advanceTimersByTime(179);
+    expect(selected).toBe(false);
+
+    vi.advanceTimersByTime(1);
+    expect(selected).toBe(true);
+    expect(node.select).toHaveBeenCalledOnce();
   });
 
   it("does nothing when a canvas pan has no selected nodes", () => {
     const cy = {
-      $: vi.fn(() => ({ length: 0, unselect: vi.fn() }))
+      $: vi.fn(() => ({ length: 0, map: vi.fn(), unselect: vi.fn() }))
     };
+    const state = { panSelectionIds: [], panRestoreTimer: null };
 
-    expect(clearSelectionForUserPan(cy)).toBe(false);
+    expect(suspendSelectionForUserPan(cy, state)).toBe(false);
   });
 });
