@@ -52,6 +52,19 @@ function installAutomaticNodePlacement(cy) {
   return cy;
 }
 
+function exposeDevelopmentGraph(cy) {
+  const container = cy.container?.();
+  if (!import.meta.env.DEV || !container) return;
+
+  Object.defineProperty(container, "__quasarGraphAdapter", {
+    configurable: true,
+    value: cy
+  });
+  cy.on("destroy", () => {
+    delete container.__quasarGraphAdapter;
+  });
+}
+
 export class GraphAdapter {
   static create(options) {
     registerPlugins();
@@ -62,7 +75,9 @@ export class GraphAdapter {
     const restoreUserNavigation = installUserNavigationGuard(cy);
     cy.on("destroy", restoreUserNavigation);
     installAutomaticNodePlacement(cy);
-    return installGraphGestures(cy);
+    const graph = installGraphGestures(cy);
+    exposeDevelopmentGraph(graph);
+    return graph;
   }
 }
 
