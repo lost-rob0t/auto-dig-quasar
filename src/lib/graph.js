@@ -1,4 +1,5 @@
 import { documentLabel } from "starintel_doc";
+import { resolveDatasetScope } from "./dataset-url-scope";
 
 export const DTYPE_COLORS = Object.freeze({
   person: "#38bdf8",
@@ -219,11 +220,12 @@ export function filterGraph(graph, queryOrFilters = "", legacyDtype = "") {
     dataset = "",
     predicate = ""
   } = filters;
+  const effectiveDataset = resolveDatasetScope(dataset);
 
   const needle = query.trim().toLowerCase();
   const candidateNodes = graph.nodes.filter((node) => {
     if (dtype && node.data.dtype !== dtype) return false;
-    if (dataset && node.data.dataset !== dataset) return false;
+    if (effectiveDataset && node.data.dataset !== effectiveDataset) return false;
     if (!needle) return true;
     return [
       node.data.id,
@@ -238,6 +240,7 @@ export function filterGraph(graph, queryOrFilters = "", legacyDtype = "") {
   const edges = graph.edges.filter((edge) => (
     candidateIds.has(edge.data.source)
     && candidateIds.has(edge.data.target)
+    && (!effectiveDataset || edge.data.dataset === effectiveDataset)
     && (!predicate || edge.data.predicate === predicate)
   ));
   const visibleIds = predicate
