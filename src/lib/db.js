@@ -1,6 +1,5 @@
 import PouchDB from "pouchdb-browser";
 import { assertDocument, isStarIntelDocument } from "starintel_doc";
-import { currentDatasetStorageSuffix } from "./dataset-storage-scope";
 import { commitDocumentBatch } from "./document-batch";
 import { normalizeGraphWorkspace } from "./graph-workspaces";
 import {
@@ -9,14 +8,8 @@ import {
   queryStarIntelView
 } from "./views";
 
-const datasetStorageSuffix = currentDatasetStorageSuffix();
-
-export const documentsDb = new PouchDB(`quasar-starintel-v09${datasetStorageSuffix}`, {
-  auto_compaction: true
-});
-export const stateDb = new PouchDB(`quasar-ui-state-v1${datasetStorageSuffix}`, {
-  auto_compaction: true
-});
+export const documentsDb = new PouchDB("quasar-starintel-v09", { auto_compaction: true });
+export const stateDb = new PouchDB("quasar-ui-state-v1", { auto_compaction: true });
 
 function newestFirst(left, right) {
   return String(right.date_updated || "").localeCompare(String(left.date_updated || ""));
