@@ -1,8 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   datasetScopeFromUrls,
   datasetSelectionFromUrls,
-  resolveDatasetScope
+  resolveDatasetScope,
+  syncDatasetScopeToCurrentUrl,
+  urlWithDatasetScope
 } from "./dataset-url-scope";
 
 describe("URL dataset scope", () => {
@@ -50,5 +52,37 @@ describe("URL dataset scope", () => {
   it("gives URL scope precedence over the dataset dropdown", () => {
     expect(resolveDatasetScope("palantir", { present: true, dataset: "wef" })).toBe("wef");
     expect(resolveDatasetScope("palantir", { present: false, dataset: null })).toBe("palantir");
+  });
+
+  it("writes the bridge dataset into the embedded Quasar URL", () => {
+    const url = urlWithDatasetScope(
+      "https://quasar.test/app/graph?host=auto-dig#focus",
+      "hunter-biden"
+    );
+
+    expect(url.pathname).toBe("/app/graph");
+    expect(url.searchParams.get("host")).toBe("auto-dig");
+    expect(url.searchParams.get("dataset")).toBe("hunter-biden");
+    expect(url.hash).toBe("#focus");
+  });
+
+  it("replaces browser history and emits popstate when bridge scope changes", () => {
+    const replaceState = vi.fn();
+    const dispatchEvent = vi.fn();
+    const event = { type: "popstate" };
+
+    expect(syncDatasetScopeToCurrentUrl("wef", {
+      location: { href: "https://quasar.test/graph?host=auto-dig" },
+      history: { state: { route: 1 }, replaceState },
+      dispatchEvent,
+      createEvent: () => event
+    })).toBe(true);
+
+    expect(replaceState).toHaveBeenCalledWith(
+      { route: 1 },
+      "",
+      "/graph?host=auto-dig&dataset=wef"
+    );
+    expect(dispatchEvent).toHaveBeenCalledWith(event);
   });
 });
