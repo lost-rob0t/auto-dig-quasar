@@ -1,10 +1,38 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowLeft, ArrowLeftRight, BookOpen, Building2, CalendarDays, CircleDot,
-  Clipboard, Copy, Database, ExternalLink, FileText, Focus, FolderPlus,
-  Grid2X2, Lightbulb, Link2, MapPin, MoreHorizontal, Network, Pencil,
-  Play, Plus, RadioTower, Search, Send, Server, Trash2, TriangleAlert,
-  UserRound, X
+  ArrowLeft,
+  ArrowLeftRight,
+  BookOpen,
+  Building2,
+  CalendarDays,
+  CircleDot,
+  Clipboard,
+  Copy,
+  Database,
+  ExternalLink,
+  FileText,
+  Focus,
+  FolderPlus,
+  Grid2X2,
+  Lightbulb,
+  Link2,
+  MapPin,
+  MoreHorizontal,
+  Network,
+  Pause,
+  Pencil,
+  Play,
+  Plus,
+  RadioTower,
+  RotateCcw,
+  Search,
+  Send,
+  Server,
+  Square,
+  Trash2,
+  TriangleAlert,
+  UserRound,
+  X
 } from "lucide-react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
@@ -15,15 +43,37 @@ import {
   touchDocument
 } from "starintel_doc";
 import { createGraphAdapter } from "../graph/GraphAdapter";
+import { isGraphUserNavigationActive } from "../graph/user-navigation-guard";
 import { actorApplicability, isBuiltinActor } from "../lib/actors";
 import { connectedDocumentIds } from "../lib/document-delete";
-import { buildGraph, filterGraph, findPaths, importedGraphNodeIds, partitionDocumentsByReview } from "../lib/graph";
+import {
+  buildGraph,
+  filterGraph,
+  findPaths,
+  importedGraphNodeIds,
+  partitionDocumentsByReview
+} from "../lib/graph";
 import { activeGraphMembershipKey } from "../lib/graph-workspaces";
+import {
+  FORCE_LAYOUT_NODE_LIMIT,
+  graphRenderDecision,
+  safeInitialLayout
+} from "../lib/graph-scale";
 import { themedGraphStyle } from "../lib/graph-style";
 import { clampRenderedPosition } from "../lib/graph-viewport";
 import { operation } from "../lib/operations";
+import {
+  cloneResearchNode,
+  researchNodeOutputIds,
+  researchNodeScope
+} from "../lib/research-node-graph";
+import { isResearchNode } from "../lib/research-nodes";
 import { useQuasar } from "../store";
-import { CompactNodeEditor, CompactRelationEditor } from "./GraphEditors";
+import {
+  CompactNodeEditor,
+  CompactRelationEditor,
+  CompactResearchNodeEditor
+} from "./GraphEditors";
 
 const QUICK_NODE_TYPES = [
   { dtype: "person", label: "Person", Icon: UserRound },
@@ -33,7 +83,8 @@ const QUICK_NODE_TYPES = [
   { dtype: "entity", label: "Entity", Icon: CircleDot },
   { dtype: "document", label: "Document", Icon: FileText },
   { dtype: "source", label: "Source", Icon: BookOpen },
-  { dtype: "concept", label: "Concept", Icon: Lightbulb }
+  { dtype: "concept", label: "Concept", Icon: Lightbulb },
+  { dtype: "research-node", label: "Research node", Icon: Network }
 ];
 
 function fitElements(cy, elements, padding, duration) {
@@ -86,11 +137,10 @@ function GraphCanvas({
     });
     apiRef.current = cy;
     const eh = cy.edgehandles({
-      canConnect: (sourceNode, targetNode) => (
-        sourceNode.id() !== targetNode.id()
-        && !sourceNode.data("unresolved")
-        && !targetNode.data("unresolved")
-      ),
+      canConnect: (sourceNode, targetNode) =>
+        sourceNode.id() !== targetNode.id() &&
+        !sourceNode.data("unresolved") &&
+        !targetNode.data("unresolved"),
       edgeParams: (sourceNode, targetNode) => ({
         data: {
           id: `relation-preview-${sourceNode.id()}-${targetNode.id()}`,
@@ -106,7 +156,8 @@ function GraphCanvas({
 
     let viewportTimer = null;
     const contextPosition = (event) => {
-      const rendered = event.renderedPosition || event.target?.renderedPosition?.() || { x: 12, y: 12 };
+      const rendered = event.renderedPosition ||
+        event.target?.renderedPosition?.() || { x: 12, y: 12 };
       const bounds = container.getBoundingClientRect();
       return {
         rendered,
@@ -132,14 +183,22 @@ function GraphCanvas({
       if (!event.target.isNode()) return;
       const now = Date.now();
       const id = event.target.id();
-      if (lastTap.current.id === id && now - lastTap.current.at < 330 && !event.target.data("unresolved")) {
+      if (
+        lastTap.current.id === id &&
+        now - lastTap.current.at < 330 &&
+        !event.target.data("unresolved")
+      ) {
         navigate(`/documents/${encodeURIComponent(id)}`);
       }
       lastTap.current = { id, at: now };
     });
     cy.on("dragfree", "node", (event) => {
       const bounds = container.getBoundingClientRect();
-      const rendered = clampRenderedPosition(event.target.renderedPosition(), bounds.width, bounds.height);
+      const rendered = clampRenderedPosition(
+        event.target.renderedPosition(),
+        bounds.width,
+        bounds.height
+      );
       event.target.renderedPosition(rendered);
       callbacks.current.onMove(event.target.id(), event.target.position());
     });
@@ -151,7 +210,10 @@ function GraphCanvas({
           const bounds = container.getBoundingClientRect();
           const rendered = activeNode.renderedPosition();
           const clamped = clampRenderedPosition(rendered, bounds.width, bounds.height);
-          if (clamped.x !== rendered.x || clamped.y !== rendered.y) {
+          if (
+            !isGraphUserNavigationActive(cy) &&
+            (clamped.x !== rendered.x || clamped.y !== rendered.y)
+          ) {
             cy.panBy({ x: clamped.x - rendered.x, y: clamped.y - rendered.y });
           }
         }
@@ -197,12 +259,20 @@ function GraphCanvas({
       cy.elements().remove();
       cy.add(graph.elements);
       cy.nodes().forEach((node) => {
-        const position = graph.nodes.find((item) => item.data.id === node.id())?.position || previous.get(node.id());
+        const position =
+          graph.nodes.find((item) => item.data.id === node.id())?.position ||
+          previous.get(node.id());
         if (position) node.position(position);
       });
     });
     if (graph.nodes.length && !graph.nodes.some((node) => node.position)) {
-      cy.layout({ name: layout || "cose", animate: false, padding: 50, randomize: true }).run();
+      const initialLayout = safeInitialLayout(layout, graph.nodes.length);
+      cy.layout({
+        name: initialLayout,
+        animate: false,
+        padding: 50,
+        randomize: initialLayout === "cose"
+      }).run();
     }
   }, [apiRef, graph, layout]);
 
@@ -228,14 +298,28 @@ function GraphCanvas({
     else cy.elements().addClass("labels-hidden");
   }, [apiRef, labels]);
 
-  return <div className="graph-canvas" ref={containerRef} onContextMenu={(event) => event.preventDefault()} />;
+  return (
+    <div
+      className="graph-canvas"
+      ref={containerRef}
+      onContextMenu={(event) => event.preventDefault()}
+    />
+  );
 }
 
 function Modal({ title, children, onClose, className = "" }) {
   return (
-    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+    <div
+      className="modal-backdrop"
+      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
+    >
       <div className={`modal ${className}`}>
-        <header><h2>{title}</h2><button className="icon-button" type="button" onClick={onClose}><X size={18} /></button></header>
+        <header>
+          <h2>{title}</h2>
+          <button className="icon-button" type="button" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </header>
         {children}
       </div>
     </div>
@@ -248,49 +332,131 @@ function GraphList({ graphs, activeGraph, onSwitch, onCreate, onRename, onDelete
     <aside className="graph-list-panel" aria-label="Graphs">
       <header>
         <span>Graphs</span>
-        <button className="icon-button" type="button" title="Add graph from list" aria-label="Add graph from list" onClick={onCreate}><Plus size={16} /></button>
+        <button
+          className="icon-button"
+          type="button"
+          title="Add graph from list"
+          aria-label="Add graph from list"
+          onClick={onCreate}
+        >
+          <Plus size={16} />
+        </button>
       </header>
-      <div className={`graph-list-mobile${Array.isArray(activeGraph?.documentIds) ? " deletable" : ""}`}>
+      <div
+        className={`graph-list-mobile${Array.isArray(activeGraph?.documentIds) ? " deletable" : ""}`}
+      >
         <label>
           <span className="sr-only">Open graph</span>
           <Network size={16} aria-hidden="true" />
-          <select aria-label="Open graph" value={activeGraph?.id || ""} onChange={(event) => onSwitch(event.target.value)}>
+          <select
+            aria-label="Open graph"
+            value={activeGraph?.id || ""}
+            onChange={(event) => onSwitch(event.target.value)}
+          >
             {(graphs || []).map((graphView) => {
               const documentCount = graphView.documentIds?.length || 0;
-              const count = graphView.documentIds === null ? "entire corpus" : `${documentCount.toLocaleString()} doc${documentCount === 1 ? "" : "s"}`;
-              return <option key={graphView.id} value={graphView.id}>{graphView.name} — {count}</option>;
+              const count =
+                graphView.documentIds === null
+                  ? "entire corpus"
+                  : `${documentCount.toLocaleString()} doc${documentCount === 1 ? "" : "s"}`;
+              return (
+                <option key={graphView.id} value={graphView.id}>
+                  {graphView.name} — {count}
+                </option>
+              );
             })}
           </select>
         </label>
-        <button type="button" className="icon-button" title="Rename graph" aria-label="Rename graph" onClick={onRename}><Pencil size={15} /></button>
-        {Array.isArray(activeGraph?.documentIds) && <button type="button" className="icon-button danger" title="Delete graph" aria-label="Delete graph" onClick={onDelete}><Trash2 size={15} /></button>}
-        <button type="button" className="icon-button" title="New graph" aria-label="New graph" onClick={onCreate}><Plus size={16} /></button>
-        <small>{activeGraph?.documentIds === null ? "Entire corpus" : `${activeDocumentCount.toLocaleString()} document${activeDocumentCount === 1 ? "" : "s"}`}</small>
+        <button
+          type="button"
+          className="icon-button"
+          title="Rename graph"
+          aria-label="Rename graph"
+          onClick={onRename}
+        >
+          <Pencil size={15} />
+        </button>
+        {Array.isArray(activeGraph?.documentIds) && (
+          <button
+            type="button"
+            className="icon-button danger"
+            title="Delete graph"
+            aria-label="Delete graph"
+            onClick={onDelete}
+          >
+            <Trash2 size={15} />
+          </button>
+        )}
+        <button
+          type="button"
+          className="icon-button"
+          title="New graph"
+          aria-label="New graph"
+          onClick={onCreate}
+        >
+          <Plus size={16} />
+        </button>
+        <small>
+          {activeGraph?.documentIds === null
+            ? "Entire corpus"
+            : `${activeDocumentCount.toLocaleString()} document${activeDocumentCount === 1 ? "" : "s"}`}
+        </small>
       </div>
       <div className="graph-list">
         {(graphs || []).map((graphView) => {
           const active = graphView.id === activeGraph?.id;
           const documentCount = graphView.documentIds?.length || 0;
           return (
-            <div className={active ? "graph-list-item active" : "graph-list-item"} key={graphView.id}>
-              <button className="graph-list-open" type="button" aria-current={active ? "page" : undefined} onClick={() => onSwitch(graphView.id)}>
+            <div
+              className={active ? "graph-list-item active" : "graph-list-item"}
+              key={graphView.id}
+            >
+              <button
+                className="graph-list-open"
+                type="button"
+                aria-current={active ? "page" : undefined}
+                onClick={() => onSwitch(graphView.id)}
+              >
                 <Network size={15} />
                 <span>
                   <strong>{graphView.name}</strong>
-                  <small>{graphView.documentIds === null ? "Entire corpus" : `${documentCount.toLocaleString()} document${documentCount === 1 ? "" : "s"}`}</small>
+                  <small>
+                    {graphView.documentIds === null
+                      ? "Entire corpus"
+                      : `${documentCount.toLocaleString()} document${documentCount === 1 ? "" : "s"}`}
+                  </small>
                 </span>
               </button>
               {active && (
                 <div className="graph-list-actions">
-                  <button type="button" title="Rename graph" aria-label="Rename graph" onClick={onRename}><Pencil size={13} /></button>
-                  {graphView.documentIds !== null && <button type="button" className="danger" title="Delete graph" aria-label="Delete graph" onClick={onDelete}><Trash2 size={13} /></button>}
+                  <button
+                    type="button"
+                    title="Rename graph"
+                    aria-label="Rename graph"
+                    onClick={onRename}
+                  >
+                    <Pencil size={13} />
+                  </button>
+                  {graphView.documentIds !== null && (
+                    <button
+                      type="button"
+                      className="danger"
+                      title="Delete graph"
+                      aria-label="Delete graph"
+                      onClick={onDelete}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  )}
                 </div>
               )}
             </div>
           );
         })}
       </div>
-      <button className="button small full graph-create-button" type="button" onClick={onCreate}><Plus size={14} /> New graph</button>
+      <button className="button small full graph-create-button" type="button" onClick={onCreate}>
+        <Plus size={14} /> New graph
+      </button>
     </aside>
   );
 }
@@ -304,8 +470,21 @@ function GraphCreate({ onClose, onCreate }) {
   return (
     <Modal title="Create graph" onClose={onClose}>
       <form className="modal-form" onSubmit={submit}>
-        <label className="field"><span>Graph name</span><input value={name} onChange={(event) => setName(event.target.value)} autoFocus required /></label>
-        <div className="form-actions"><button type="button" className="button" onClick={onClose}>Cancel</button><button className="button primary">Create graph</button></div>
+        <label className="field">
+          <span>Graph name</span>
+          <input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            autoFocus
+            required
+          />
+        </label>
+        <div className="form-actions">
+          <button type="button" className="button" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="button primary">Create graph</button>
+        </div>
       </form>
     </Modal>
   );
@@ -315,17 +494,25 @@ function GraphMembershipAdd({ documents, existingIds, onAdd, onClose }) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState([]);
   const existing = useMemo(() => new Set(existingIds || []), [existingIds]);
-  const visible = useMemo(() => documents
-    .filter((document) => document.dtype !== "relation" && !existing.has(document._id))
-    .filter((document) => {
-      const needle = query.trim().toLowerCase();
-      if (!needle) return true;
-      return `${document._id} ${document.title || ""} ${JSON.stringify(document.data || {})}`.toLowerCase().includes(needle);
-    })
-    .slice(0, 100), [documents, existing, query]);
+  const visible = useMemo(
+    () =>
+      documents
+        .filter((document) => document.dtype !== "relation" && !existing.has(document._id))
+        .filter((document) => {
+          const needle = query.trim().toLowerCase();
+          if (!needle) return true;
+          return `${document._id} ${document.title || ""} ${JSON.stringify(document.data || {})}`
+            .toLowerCase()
+            .includes(needle);
+        })
+        .slice(0, 100),
+    [documents, existing, query]
+  );
 
   function toggle(id) {
-    setSelected((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
+    setSelected((current) =>
+      current.includes(id) ? current.filter((value) => value !== id) : [...current, id]
+    );
   }
   function submit(event) {
     event.preventDefault();
@@ -335,17 +522,39 @@ function GraphMembershipAdd({ documents, existingIds, onAdd, onClose }) {
   return (
     <Modal title="Add corpus documents" onClose={onClose}>
       <form className="modal-form" onSubmit={submit}>
-        <label className="field"><span>Search corpus</span><input value={query} onChange={(event) => setQuery(event.target.value)} autoFocus placeholder="Name, ID, or field value" /></label>
+        <label className="field">
+          <span>Search corpus</span>
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            autoFocus
+            placeholder="Name, ID, or field value"
+          />
+        </label>
         <div className="membership-list">
           {visible.map((document) => (
             <label key={document._id}>
-              <input type="checkbox" checked={selected.includes(document._id)} onChange={() => toggle(document._id)} />
-              <span><strong>{documentLabel(document)}</strong><code>{document._id}</code></span>
+              <input
+                type="checkbox"
+                checked={selected.includes(document._id)}
+                onChange={() => toggle(document._id)}
+              />
+              <span>
+                <strong>{documentLabel(document)}</strong>
+                <code>{document._id}</code>
+              </span>
             </label>
           ))}
           {!visible.length && <p className="muted">No available corpus documents match.</p>}
         </div>
-        <div className="form-actions"><button type="button" className="button" onClick={onClose}>Cancel</button><button className="button primary" disabled={!selected.length}>Add {selected.length || ""} document{selected.length === 1 ? "" : "s"}</button></div>
+        <div className="form-actions">
+          <button type="button" className="button" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="button primary" disabled={!selected.length}>
+            Add {selected.length || ""} document{selected.length === 1 ? "" : "s"}
+          </button>
+        </div>
       </form>
     </Modal>
   );
@@ -364,19 +573,21 @@ function TargetSubmit({ document, onClose }) {
     event.preventDefault();
     setSubmitting(true);
     try {
-      const targetDocument = assertDocument(createDocument("target", {
-        dataset,
-        title: `Target ${documentLabel(document)}`,
-        data: {
-          actor,
-          target,
-          target_id: document._id,
-          target_type: document.dtype,
-          recurring,
-          delay: Number(delay) || 0,
-          options: []
-        }
-      }));
+      const targetDocument = assertDocument(
+        createDocument("target", {
+          dataset,
+          title: `Target ${documentLabel(document)}`,
+          data: {
+            actor,
+            target,
+            target_id: document._id,
+            target_type: document.dtype,
+            recurring,
+            delay: Number(delay) || 0,
+            options: []
+          }
+        })
+      );
       await submitTarget(targetDocument, settings);
       await runTargetActors(targetDocument);
       setNotice({ kind: "success", message: `Submitted ${documentLabel(document)} to ${actor}` });
@@ -391,15 +602,50 @@ function TargetSubmit({ document, onClose }) {
   return (
     <Modal title="Submit target" onClose={onClose}>
       <form className="modal-form" onSubmit={submit}>
-        <label className="field"><span>Actor ID</span><input value={actor} onChange={(event) => setActor(event.target.value)} autoFocus required /></label>
-        <label className="field"><span>Target</span><input value={target} onChange={(event) => setTarget(event.target.value)} required /></label>
-        <label className="field"><span>Dataset</span><input value={dataset} onChange={(event) => setDataset(event.target.value)} required /></label>
-        <label className="field"><span>Delay in seconds</span><input type="number" min="0" value={delay} onChange={(event) => setDelay(event.target.value)} /></label>
-        <label className="checkbox"><input type="checkbox" checked={recurring} onChange={(event) => setRecurring(event.target.checked)} /> Recurring target</label>
-        {!settings?.serverUrl && <p className="validation-error">Configure a StarIntel server URL in Settings first.</p>}
+        <label className="field">
+          <span>Actor ID</span>
+          <input
+            value={actor}
+            onChange={(event) => setActor(event.target.value)}
+            autoFocus
+            required
+          />
+        </label>
+        <label className="field">
+          <span>Target</span>
+          <input value={target} onChange={(event) => setTarget(event.target.value)} required />
+        </label>
+        <label className="field">
+          <span>Dataset</span>
+          <input value={dataset} onChange={(event) => setDataset(event.target.value)} required />
+        </label>
+        <label className="field">
+          <span>Delay in seconds</span>
+          <input
+            type="number"
+            min="0"
+            value={delay}
+            onChange={(event) => setDelay(event.target.value)}
+          />
+        </label>
+        <label className="checkbox">
+          <input
+            type="checkbox"
+            checked={recurring}
+            onChange={(event) => setRecurring(event.target.checked)}
+          />{" "}
+          Recurring target
+        </label>
+        {!settings?.serverUrl && (
+          <p className="validation-error">Configure a StarIntel server URL in Settings first.</p>
+        )}
         <div className="form-actions">
-          <button type="button" className="button" onClick={onClose}>Cancel</button>
-          <button className="button primary" disabled={submitting || !settings?.serverUrl}><Send size={15} /> {submitting ? "Submitting…" : "Submit target"}</button>
+          <button type="button" className="button" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="button primary" disabled={submitting || !settings?.serverUrl}>
+            <Send size={15} /> {submitting ? "Submitting…" : "Submit target"}
+          </button>
         </div>
       </form>
     </Modal>
@@ -414,33 +660,67 @@ function relationEndpoints(relation) {
 }
 
 export default function GraphPage() {
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const location = useLocation();
   const {
-    documents, workspace, selectedIds, selectedDocuments, select, persistWorkspace,
-    actors, runActor, settings, setNotice, graphs, activeGraph,
-    addDocumentsToActiveGraph, removeDocumentsFromActiveGraph,
-    createGraph, switchGraph, renameGraph, deleteGraph, clearGraph, execute,
-    queueStatus, startQueue, stopQueue
+    documents,
+    workspace,
+    selectedIds,
+    selectedDocuments,
+    select,
+    persistWorkspace,
+    actors,
+    runActor,
+    settings,
+    setNotice,
+    graphs,
+    activeGraph,
+    addDocumentsToActiveGraph,
+    removeDocumentsFromActiveGraph,
+    createGraph,
+    switchGraph,
+    renameGraph,
+    deleteGraph,
+    clearGraph,
+    execute,
+    queueStatus,
+    startQueue,
+    stopQueue,
+    researchRunState = {},
+    runResearchNode,
+    pauseResearchNode,
+    resumeResearchNode,
+    retryResearchNode,
+    killResearchNode
   } = useQuasar();
   const apiRef = useRef(null);
   const edgeHandlesRef = useRef(null);
   const importMembershipHandled = useRef(false);
   const importFocusHandled = useRef(false);
   const importedIds = useMemo(
-    () => location.state?.source === "local-import" ? [...new Set(location.state.importedIds || [])] : [],
+    () =>
+      ["local-import", "search-results"].includes(location.state?.source)
+        ? [...new Set(location.state.importedIds || [])]
+        : [],
     [location.state]
   );
   const [query, setQuery] = useState("");
   const [dtype, setDtype] = useState("");
-  const [dataset, setDataset] = useState("");
+  const datasetParam = params.get("dataset") || "";
+  const graphParam = params.get("graph") || "";
+  const [dataset, setDataset] = useState(datasetParam);
   const [predicate, setPredicate] = useState("");
-  const [reviewStatus, setReviewStatus] = useState(location.state?.revealUnreviewed || !documents.length ? "all" : "reviewed");
+  const [reviewStatus, setReviewStatus] = useState(
+    location.state?.revealUnreviewed || params.get("review") === "all" || !documents.length
+      ? "all"
+      : "reviewed"
+  );
   const [labels, setLabels] = useState(true);
   const [relationDraft, setRelationDraft] = useState(null);
   const [relationEdit, setRelationEdit] = useState(null);
   const [nodeDraft, setNodeDraft] = useState(null);
   const [quickEdit, setQuickEdit] = useState(null);
+  const [researchDraft, setResearchDraft] = useState(null);
   const [targetDocument, setTargetDocument] = useState(null);
   const [showGraphCreate, setShowGraphCreate] = useState(false);
   const [showMembershipAdd, setShowMembershipAdd] = useState(false);
@@ -460,27 +740,92 @@ export default function GraphPage() {
     const allowed = new Set(JSON.parse(membershipKey));
     return documents.filter((document) => allowed.has(document._id));
   }, [documents, membershipKey]);
-  const reviewGroups = useMemo(() => partitionDocumentsByReview(scopedDocuments), [scopedDocuments]);
-  const graphDocuments = reviewStatus === "all" ? scopedDocuments : reviewGroups.reviewed;
-  const graph = useMemo(() => buildGraph(graphDocuments, workspace?.positions || {}), [graphDocuments, workspace?.positions]);
-  const visibleGraph = useMemo(() => filterGraph(graph, { query, dtype, dataset, predicate }), [graph, query, dtype, dataset, predicate]);
-  const datasets = useMemo(() => [...new Set(graphDocuments.map((document) => document.dataset || "unknown"))].sort(), [graphDocuments]);
-  const predicates = useMemo(() => [...new Set(graph.edges.map((edge) => edge.data.predicate).filter(Boolean))].sort(), [graph.edges]);
-  const graphDocumentIds = useMemo(() => new Set(graph.nodes.map((node) => node.data.id)), [graph.nodes]);
-  const importedFocusIds = useMemo(() => importedGraphNodeIds(graph, importedIds), [graph, importedIds]);
-  const nodeOptions = graph.nodes.filter((node) => !node.data.unresolved).slice().sort((left, right) => left.data.label.localeCompare(right.data.label));
+  const datasetDocuments = useMemo(
+    () =>
+      dataset
+        ? scopedDocuments.filter((document) => document.dataset === dataset)
+        : scopedDocuments,
+    [dataset, scopedDocuments]
+  );
+  const reviewGroups = useMemo(
+    () => partitionDocumentsByReview(datasetDocuments),
+    [datasetDocuments]
+  );
+  const renderDocuments = reviewStatus === "all" ? datasetDocuments : reviewGroups.reviewed;
+  const renderDecision = useMemo(() => graphRenderDecision(renderDocuments), [renderDocuments]);
+  const graph = useMemo(
+    () =>
+      renderDecision.allowed
+        ? buildGraph(renderDocuments, workspace?.positions || {})
+        : { nodes: [], edges: [], elements: [] },
+    [renderDecision.allowed, renderDocuments, workspace?.positions]
+  );
+  const visibleGraph = useMemo(
+    () => filterGraph(graph, { query, dtype, predicate }),
+    [graph, query, dtype, predicate]
+  );
+  const datasets = useMemo(
+    () => [...new Set(scopedDocuments.map((document) => document.dataset || "unknown"))].sort(),
+    [scopedDocuments]
+  );
+  const predicates = useMemo(
+    () => [...new Set(graph.edges.map((edge) => edge.data.predicate).filter(Boolean))].sort(),
+    [graph.edges]
+  );
+  const activeFilterLabels = [
+    query && `search “${query}”`,
+    dataset && `dataset “${dataset}”`,
+    dtype && `type “${dtype}”`,
+    predicate && `predicate “${predicate}”`
+  ].filter(Boolean);
+  const graphDocumentIds = useMemo(
+    () => new Set(graph.nodes.map((node) => node.data.id)),
+    [graph.nodes]
+  );
+  const importedFocusIds = useMemo(
+    () => importedGraphNodeIds(graph, importedIds),
+    [graph, importedIds]
+  );
+  const nodeOptions = graph.nodes
+    .filter((node) => !node.data.unresolved)
+    .slice()
+    .sort((left, right) => left.data.label.localeCompare(right.data.label));
   const selected = selectedDocuments.find((document) => graphDocumentIds.has(document._id));
-  const actorEntries = useMemo(() => actors.map((actor) => ({
-    actor,
-    builtin: isBuiltinActor(actor),
-    availability: actorApplicability(actor, selectedDocuments)
-  })), [actors, selectedDocuments]);
+  const actorEntries = useMemo(
+    () =>
+      actors.map((actor) => ({
+        actor,
+        builtin: isBuiltinActor(actor),
+        availability: actorApplicability(actor, selectedDocuments)
+      })),
+    [actors, selectedDocuments]
+  );
 
-  const onMove = useMemo(() => (id, position) => {
-    persistWorkspace({ positions: { ...(workspace?.positions || {}), [id]: position } });
-  }, [persistWorkspace, workspace?.positions]);
-  const onViewport = useMemo(() => (viewport) => persistWorkspace({ viewport }), [persistWorkspace]);
+  const onMove = useMemo(
+    () => (id, position) => {
+      persistWorkspace({ positions: { ...(workspace?.positions || {}), [id]: position } });
+    },
+    [persistWorkspace, workspace?.positions]
+  );
+  const onViewport = useMemo(
+    () => (viewport) => persistWorkspace({ viewport }),
+    [persistWorkspace]
+  );
   const onSelection = useMemo(() => (ids) => select(ids), [select]);
+
+  useEffect(() => {
+    setDataset(datasetParam);
+  }, [datasetParam]);
+
+  useEffect(() => {
+    if (
+      !graphParam ||
+      activeGraph?.id === graphParam ||
+      !graphs?.some((candidate) => candidate.id === graphParam)
+    )
+      return;
+    switchGraph?.(graphParam);
+  }, [activeGraph?.id, graphParam, graphs, switchGraph]);
 
   useEffect(() => {
     setCanvasMenu(null);
@@ -488,6 +833,7 @@ export default function GraphPage() {
     setRelationEdit(null);
     setNodeDraft(null);
     setQuickEdit(null);
+    setResearchDraft(null);
     setTargetDocument(null);
     setMenuQuery("");
     setEmptyStateDismissed(false);
@@ -553,17 +899,35 @@ export default function GraphPage() {
   function runLayout(name) {
     const cy = apiRef.current;
     if (!cy) return;
+    if (name === "cose" && graph.nodes.length > FORCE_LAYOUT_NODE_LIMIT) {
+      setNotice({
+        kind: "error",
+        message: `Force layout is limited to ${FORCE_LAYOUT_NODE_LIMIT.toLocaleString()} nodes. Use Grid, Circle, or Concentric for this graph.`
+      });
+      return;
+    }
     persistWorkspace({ layout: name });
-    const options = name === "breadthfirst"
-      ? { name, directed: true, padding: 60, spacingFactor: 1.25, animate: true }
-      : { name, padding: 60, animate: true, randomize: name === "cose" };
+    const options =
+      name === "breadthfirst"
+        ? { name, directed: true, padding: 60, spacingFactor: 1.25, animate: true }
+        : { name, padding: 60, animate: true, randomize: name === "cose" };
     const layout = cy.layout(options);
     layout.on("layoutstop", () => {
       const positions = { ...(workspace?.positions || {}) };
-      cy.nodes().forEach((node) => { positions[node.id()] = node.position(); });
+      cy.nodes().forEach((node) => {
+        positions[node.id()] = node.position();
+      });
       persistWorkspace({ positions, layout: name });
     });
     layout.run();
+  }
+
+  function changeDataset(nextDataset) {
+    setDataset(nextDataset);
+    const next = new URLSearchParams(params);
+    if (nextDataset) next.set("dataset", nextDataset);
+    else next.delete("dataset");
+    setParams(next, { replace: true });
   }
 
   function calculatePaths() {
@@ -599,7 +963,8 @@ export default function GraphPage() {
     const handleAgentCommand = (event) => {
       const command = event.detail || {};
       if (command.op === "fit_graph") fit();
-      if (command.op === "focus_selection") focusSelection(command.ids?.length ? command.ids : selectedIds);
+      if (command.op === "focus_selection")
+        focusSelection(command.ids?.length ? command.ids : selectedIds);
       if (command.op === "apply_layout") runLayout(command.layout || "cose");
     };
     window.addEventListener("quasar:agent-graph-command", handleAgentCommand);
@@ -611,15 +976,21 @@ export default function GraphPage() {
     setDtype("");
     setDataset("");
     setPredicate("");
+    const next = new URLSearchParams(params);
+    next.delete("dataset");
+    setParams(next, { replace: true });
   }
 
   function openQuickAdd(context = null, objectType = "entity") {
     setCanvasMenu(null);
-    setNodeDraft({
+    const draft = {
       objectType,
       dataset: selected?.dataset || dataset || "default",
+      inputIds: selectedIds,
       position: context?.position ? context : null
-    });
+    };
+    if (objectType === "research-node") setResearchDraft(draft);
+    else setNodeDraft(draft);
   }
 
   function openCanvasMenu(context) {
@@ -655,7 +1026,10 @@ export default function GraphPage() {
     const bounds = cy?.container()?.getBoundingClientRect();
     setRelationDraft({
       ids: [...selectedIds],
-      rendered: { x: (firstPosition.x + secondPosition.x) / 2, y: (firstPosition.y + secondPosition.y) / 2 },
+      rendered: {
+        x: (firstPosition.x + secondPosition.x) / 2,
+        y: (firstPosition.y + secondPosition.y) / 2
+      },
       bounds: { width: bounds?.width || 600, height: bounds?.height || 500 }
     });
   }
@@ -664,10 +1038,12 @@ export default function GraphPage() {
     if (canvasMenu && !event.target.closest(".graph-context-menu")) setCanvasMenu(null);
   }
 
-  const canvasMenuStyle = canvasMenu ? {
-    left: Math.max(8, Math.min(canvasMenu.rendered.x, canvasMenu.bounds.width - 292)),
-    top: Math.max(8, Math.min(canvasMenu.rendered.y, canvasMenu.bounds.height - 430))
-  } : undefined;
+  const canvasMenuStyle = canvasMenu
+    ? {
+        left: Math.max(8, Math.min(canvasMenu.rendered.x, canvasMenu.bounds.width - 292)),
+        top: Math.max(8, Math.min(canvasMenu.rendered.y, canvasMenu.bounds.height - 430))
+      }
+    : undefined;
 
   function createNamedGraph(name) {
     try {
@@ -706,7 +1082,12 @@ export default function GraphPage() {
   }
 
   function deleteCurrentGraph() {
-    if (!window.confirm(`Delete graph "${activeGraph?.name || ""}"? Corpus documents will not be deleted.`)) return;
+    if (
+      !window.confirm(
+        `Delete graph "${activeGraph?.name || ""}"? Corpus documents will not be deleted.`
+      )
+    )
+      return;
     try {
       deleteGraph();
       setReviewStatus("all");
@@ -728,7 +1109,10 @@ export default function GraphPage() {
       clearFilters();
       select([]);
       setCanvasMenu(null);
-      setNotice({ kind: "success", message: corpusView ? "Created a new empty graph." : "Graph cleared." });
+      setNotice({
+        kind: "success",
+        message: corpusView ? "Created a new empty graph." : "Graph cleared."
+      });
     } catch (error) {
       setNotice({ kind: "error", message: error.message });
     }
@@ -738,7 +1122,9 @@ export default function GraphPage() {
     const members = new Set([...(activeGraph?.documentIds || []), ...ids]);
     const relationIds = documents
       .filter((document) => document.dtype === "relation")
-      .filter((document) => members.has(document.data?.subject) && members.has(document.data?.object))
+      .filter(
+        (document) => members.has(document.data?.subject) && members.has(document.data?.object)
+      )
       .map((document) => document._id);
     addDocumentsToActiveGraph([...ids, ...relationIds], { selectedIds: ids });
     setReviewStatus("all");
@@ -760,7 +1146,12 @@ export default function GraphPage() {
   function selectNeighbors(id) {
     const node = apiRef.current?.getElementById(id);
     if (!node?.length) return;
-    select(node.closedNeighborhood().nodes().map((item) => item.id()));
+    select(
+      node
+        .closedNeighborhood()
+        .nodes()
+        .map((item) => item.id())
+    );
     setCanvasMenu(null);
   }
 
@@ -776,9 +1167,20 @@ export default function GraphPage() {
 
   async function deleteCorpusDocuments(ids) {
     const deleteIds = connectedDocumentIds(documents, ids);
-    if (!window.confirm(`Delete ${deleteIds.length} corpus document(s)? This includes connected relation documents and can be undone.`)) return;
+    if (
+      !window.confirm(
+        `Delete ${deleteIds.length} corpus document(s)? This includes connected relation documents and can be undone.`
+      )
+    )
+      return;
     try {
-      await execute(operation.batch(deleteIds.map((id) => operation.remove(id)), "Delete graph documents"), `Delete ${deleteIds.length} graph document(s)`);
+      await execute(
+        operation.batch(
+          deleteIds.map((id) => operation.remove(id)),
+          "Delete graph documents"
+        ),
+        `Delete ${deleteIds.length} graph document(s)`
+      );
       if (activeGraph?.documentIds !== null) removeDocumentsFromActiveGraph(deleteIds);
       select([]);
       setCanvasMenu(null);
@@ -790,10 +1192,12 @@ export default function GraphPage() {
   async function reverseRelation(relation) {
     const [source, target] = relationEndpoints(relation);
     try {
-      const updated = assertDocument(touchDocument(relation, {
-        title: `${target} ${relation.data?.predicate || "related-to"} ${source}`,
-        data: { ...(relation.data || {}), subject: target, object: source }
-      }));
+      const updated = assertDocument(
+        touchDocument(relation, {
+          title: `${target} ${relation.data?.predicate || "related-to"} ${source}`,
+          data: { ...(relation.data || {}), subject: target, object: source }
+        })
+      );
       await execute(operation.save(updated), `Reverse ${relation._id}`);
       setCanvasMenu(null);
     } catch (error) {
@@ -817,7 +1221,11 @@ export default function GraphPage() {
     try {
       const result = await runActor(actor);
       const produced = Array.isArray(result?.documents) ? result.documents : [];
-      const nodeIds = produced.filter((document) => document?.dtype !== "relation").map((document) => document._id).filter(Boolean).slice(0, 100);
+      const nodeIds = produced
+        .filter((document) => document?.dtype !== "relation")
+        .map((document) => document._id)
+        .filter(Boolean)
+        .slice(0, 100);
       if (produced.length) {
         setReviewStatus("all");
         clearFilters();
@@ -835,185 +1243,1000 @@ export default function GraphPage() {
     }
   }
 
-  const menuMatches = (label) => !menuQuery.trim() || label.toLowerCase().includes(menuQuery.trim().toLowerCase());
-  const contextNode = canvasMenu?.kind === "node" ? documents.find((document) => document._id === canvasMenu.id) : null;
-  const contextRelation = canvasMenu?.kind === "edge" ? documents.find((document) => document._id === canvasMenu.id) : null;
+  function inspectResearchOutputs(document) {
+    const outputIds = researchNodeOutputIds(document).filter((id) => graphDocumentIds.has(id));
+    setCanvasMenu(null);
+    if (!outputIds.length) {
+      setNotice({
+        kind: "info",
+        message: "This research node has no outputs in the active graph."
+      });
+      return;
+    }
+    select(outputIds);
+    focusSelection(outputIds);
+  }
+
+  async function cloneContextResearchNode(document) {
+    try {
+      const suffix = globalThis.crypto?.randomUUID
+        ? globalThis.crypto.randomUUID()
+        : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+      const cloned = cloneResearchNode(document, {
+        id: `starintel:research-node:${suffix}`
+      });
+      await execute(operation.save(cloned), `Clone ${document._id}`);
+      if (activeGraph?.documentIds !== null) {
+        addDocumentsToActiveGraph([cloned._id], { selectedIds: [cloned._id] });
+      }
+      setReviewStatus("all");
+      clearFilters();
+      select([cloned._id]);
+      setCanvasMenu(null);
+      setNotice({ kind: "success", message: `Cloned research node as ${cloned._id}` });
+    } catch (error) {
+      setNotice({ kind: "error", message: error.message });
+    }
+  }
+
+  async function executeResearchAction(action, document) {
+    setCanvasMenu(null);
+    const actions = {
+      run: runResearchNode,
+      pause: pauseResearchNode,
+      resume: resumeResearchNode,
+      retry: retryResearchNode,
+      kill: killResearchNode
+    };
+    try {
+      await actions[action](document);
+    } catch (error) {
+      setNotice({ kind: "error", message: error.message });
+    }
+  }
+
+  const menuMatches = (label) =>
+    !menuQuery.trim() || label.toLowerCase().includes(menuQuery.trim().toLowerCase());
+  const contextNode =
+    canvasMenu?.kind === "node"
+      ? documents.find((document) => document._id === canvasMenu.id)
+      : null;
+  const contextRelation =
+    canvasMenu?.kind === "edge"
+      ? documents.find((document) => document._id === canvasMenu.id)
+      : null;
+  const contextResearchScope =
+    contextNode && isResearchNode(contextNode) ? researchNodeScope(contextNode) : null;
+  const selectedResearchScope =
+    selected && isResearchNode(selected) ? researchNodeScope(selected) : null;
+  const contextResearchStatus = contextNode?.data?.status || "draft";
+  const contextResearchActive = ["queued", "running"].includes(
+    researchRunState[contextNode?._id]?.state
+  );
+  const selectedResearchStatus = selected?.data?.status || "draft";
+  const selectedResearchActive = ["queued", "running"].includes(
+    researchRunState[selected?._id]?.state
+  );
   const [contextSourceId, contextTargetId] = relationEndpoints(contextRelation);
 
   return (
     <section className="graph-page">
-      <Link className="back-link" to="/"><ArrowLeft size={14} /> Statistics dashboard</Link>
+      <Link className="back-link" to="/">
+        <ArrowLeft size={14} /> Statistics dashboard
+      </Link>
       <div className="page-heading graph-heading">
-        <div><span className="eyebrow">Investigation graph</span><h1>Graph explorer</h1><p>Search, filter, and inspect the relationship network. Reviewed records are shown by default.</p></div>
+        <div>
+          <span className="eyebrow">Investigation graph</span>
+          <h1>Graph explorer</h1>
+          <p>
+            Search, filter, and inspect the relationship network. Reviewed records are shown by
+            default.
+          </p>
+        </div>
         <div className="graph-heading-actions">
-          <div className="graph-source-status"><Database size={17} /><span><strong>Local PouchDB corpus</strong><small>startup + live changes</small></span></div>
+          <div className="graph-source-status">
+            <Database size={17} />
+            <span>
+              <strong>Local PouchDB corpus</strong>
+              <small>startup + live changes</small>
+            </span>
+          </div>
           <div className="graph-switcher">
-            <select aria-label="Active graph" value={activeGraph?.id || ""} onChange={(event) => changeGraph(event.target.value)}>
-              {(graphs || []).map((graphView) => <option key={graphView.id} value={graphView.id}>{graphView.name}{graphView.documentIds === null ? " · all documents" : ` · ${graphView.documentIds.length}`}</option>)}
+            <select
+              aria-label="Active graph"
+              value={activeGraph?.id || ""}
+              onChange={(event) => changeGraph(event.target.value)}
+            >
+              {(graphs || []).map((graphView) => (
+                <option key={graphView.id} value={graphView.id}>
+                  {graphView.name}
+                  {graphView.documentIds === null
+                    ? " · all documents"
+                    : ` · ${graphView.documentIds.length}`}
+                </option>
+              ))}
             </select>
-            <button className="icon-button" title="Create graph" aria-label="Create graph" onClick={() => setShowGraphCreate(true)}><FolderPlus size={16} /></button>
-            <button className="icon-button" title="Rename graph" aria-label="Rename graph" onClick={renameCurrentGraph}><Pencil size={15} /></button>
-            <button className="icon-button danger" title="Delete graph" aria-label="Delete graph" onClick={deleteCurrentGraph} disabled={(graphs || []).length <= 1}><Trash2 size={15} /></button>
+            <button
+              className="icon-button"
+              title="Create graph"
+              aria-label="Create graph"
+              onClick={() => setShowGraphCreate(true)}
+            >
+              <FolderPlus size={16} />
+            </button>
+            <button
+              className="icon-button"
+              title="Rename graph"
+              aria-label="Rename graph"
+              onClick={renameCurrentGraph}
+            >
+              <Pencil size={15} />
+            </button>
+            <button
+              className="icon-button danger"
+              title="Delete graph"
+              aria-label="Delete graph"
+              onClick={deleteCurrentGraph}
+              disabled={(graphs || []).length <= 1}
+            >
+              <Trash2 size={15} />
+            </button>
           </div>
           <div className="button-row">
-            {activeGraph?.documentIds !== null && <button className="button" onClick={() => setShowMembershipAdd(true)}><Plus size={16} /> Add from corpus</button>}
-            {activeGraph?.documentIds !== null && <button className="button danger" onClick={removeSelectionFromGraph} disabled={!selectedIds.length}>Remove from graph</button>}
-            <button className="button danger" onClick={() => deleteCorpusDocuments(selectedIds)} disabled={!selectedIds.length}>Delete selected documents</button>
-            <button className="button" onClick={clearCurrentGraph}>Clear graph</button>
-            <button className="button" onClick={openSelectedRelation} disabled={selectedIds.length !== 2}><Link2 size={16} /> Connect selected</button>
-            <button className="button primary" onClick={() => openQuickAdd()}><Plus size={16} /> Add graph document</button>
+            {activeGraph?.documentIds !== null && (
+              <button className="button" onClick={() => setShowMembershipAdd(true)}>
+                <Plus size={16} /> Add from corpus
+              </button>
+            )}
+            {activeGraph?.documentIds !== null && (
+              <button
+                className="button danger"
+                onClick={removeSelectionFromGraph}
+                disabled={!selectedIds.length}
+              >
+                Remove from graph
+              </button>
+            )}
+            <button
+              className="button danger"
+              onClick={() => deleteCorpusDocuments(selectedIds)}
+              disabled={!selectedIds.length}
+            >
+              Delete selected documents
+            </button>
+            <button className="button" onClick={clearCurrentGraph}>
+              Clear graph
+            </button>
+            <button
+              className="button"
+              onClick={openSelectedRelation}
+              disabled={selectedIds.length !== 2}
+            >
+              <Link2 size={16} /> Connect selected
+            </button>
+            <button className="button primary" onClick={() => openQuickAdd()}>
+              <Plus size={16} /> Add graph document
+            </button>
           </div>
         </div>
       </div>
 
       <div className="graph-toolbar">
-        <label className="graph-search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search graph" /></label>
-        <select aria-label="Dataset filter" value={dataset} onChange={(event) => setDataset(event.target.value)}><option value="">All datasets</option>{datasets.map((name) => <option key={name} value={name}>{name}</option>)}</select>
-        <select aria-label="Object type filter" value={dtype} onChange={(event) => setDtype(event.target.value)}><option value="">All object types</option>{dtypes.map((name) => <option key={name}>{name}</option>)}</select>
-        <select aria-label="Predicate filter" value={predicate} onChange={(event) => setPredicate(event.target.value)}><option value="">All predicates</option>{predicates.map((name) => <option key={name} value={name}>{name}</option>)}</select>
-        <select aria-label="Reviewed status filter" value={reviewStatus} onChange={(event) => setReviewStatus(event.target.value)}><option value="reviewed">Reviewed only</option><option value="all">Reviewed + unreviewed</option></select>
-        <select aria-label="Graph layout" value={workspace?.layout || "cose"} onChange={(event) => runLayout(event.target.value)}><option value="cose">Force</option><option value="breadthfirst">Hierarchy</option><option value="circle">Circle</option><option value="concentric">Concentric</option><option value="grid">Grid</option></select>
-        <button className="button small" onClick={fit}>Fit</button>
-        <button className="button small" onClick={() => focusSelection()} disabled={!selectedIds.length}><Focus size={15} /> Focus</button>
-        <label className="checkbox compact"><input type="checkbox" checked={labels} onChange={(event) => setLabels(event.target.checked)} /> Labels</label>
-        <span className="graph-count">{visibleGraph.nodes.length} nodes · {visibleGraph.edges.length} edges · {reviewGroups.reviewed.length.toLocaleString()} reviewed · {reviewGroups.unreviewed.length.toLocaleString()} unreviewed</span>
+        <label className="graph-search">
+          <Search size={16} />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search graph"
+          />
+        </label>
+        <select
+          aria-label="Dataset filter"
+          value={dataset}
+          onChange={(event) => changeDataset(event.target.value)}
+        >
+          <option value="">All datasets</option>
+          {datasets.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label="Object type filter"
+          value={dtype}
+          onChange={(event) => setDtype(event.target.value)}
+        >
+          <option value="">All object types</option>
+          {dtypes.map((name) => (
+            <option key={name}>{name}</option>
+          ))}
+        </select>
+        <select
+          aria-label="Predicate filter"
+          value={predicate}
+          onChange={(event) => setPredicate(event.target.value)}
+        >
+          <option value="">All predicates</option>
+          {predicates.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label="Reviewed status filter"
+          value={reviewStatus}
+          onChange={(event) => setReviewStatus(event.target.value)}
+        >
+          <option value="reviewed">Reviewed only</option>
+          <option value="all">Reviewed + unreviewed</option>
+        </select>
+        <select
+          aria-label="Graph layout"
+          value={workspace?.layout || "cose"}
+          onChange={(event) => runLayout(event.target.value)}
+        >
+          <option value="cose">Force</option>
+          <option value="breadthfirst">Hierarchy</option>
+          <option value="circle">Circle</option>
+          <option value="concentric">Concentric</option>
+          <option value="grid">Grid</option>
+        </select>
+        <button className="button small" onClick={fit}>
+          Fit
+        </button>
+        <button
+          className="button small"
+          onClick={() => focusSelection()}
+          disabled={!selectedIds.length}
+        >
+          <Focus size={15} /> Focus
+        </button>
+        <label className="checkbox compact">
+          <input
+            type="checkbox"
+            checked={labels}
+            onChange={(event) => setLabels(event.target.checked)}
+          />{" "}
+          Labels
+        </label>
+        <span className="graph-count">
+          {visibleGraph.nodes.length} nodes · {visibleGraph.edges.length} edges ·{" "}
+          {reviewGroups.reviewed.length.toLocaleString()} reviewed ·{" "}
+          {reviewGroups.unreviewed.length.toLocaleString()} unreviewed
+        </span>
       </div>
 
       {reviewStatus === "all" && reviewGroups.unreviewed.length > 0 && (
-        <div className="graph-review-warning"><TriangleAlert size={17} /><span>{importedIds.length ? "Imported records are revealed for this graph session. " : "Unreviewed data is enabled. "}{reviewGroups.unreviewed.length.toLocaleString()} unreviewed records are displayed alongside reviewed records.</span></div>
+        <div className="graph-review-warning">
+          <TriangleAlert size={17} />
+          <span>
+            {importedIds.length
+              ? "Imported records are revealed for this graph session. "
+              : "Unreviewed data is enabled. "}
+            {reviewGroups.unreviewed.length.toLocaleString()} unreviewed records are displayed
+            alongside reviewed records.
+          </span>
+        </div>
       )}
 
       <div className="graph-workbench">
-        <GraphList graphs={graphs} activeGraph={activeGraph} onSwitch={changeGraph} onCreate={() => setShowGraphCreate(true)} onRename={renameCurrentGraph} onDelete={deleteCurrentGraph} />
+        <GraphList
+          graphs={graphs}
+          activeGraph={activeGraph}
+          onSwitch={changeGraph}
+          onCreate={() => setShowGraphCreate(true)}
+          onRename={renameCurrentGraph}
+          onDelete={deleteCurrentGraph}
+        />
         <div className="graph-stage" onPointerDown={closeCanvasMenu}>
-          <GraphCanvas
-            graph={visibleGraph}
-            layout={workspace?.layout || "cose"}
-            selectedIds={selectedIds}
-            onSelection={onSelection}
-            onMove={onMove}
-            onViewport={onViewport}
-            onCanvasContext={openCanvasMenu}
-            onNodeContext={openNodeMenu}
-            onEdgeContext={openEdgeMenu}
-            onRelationDraft={setRelationDraft}
-            apiRef={apiRef}
-            edgeHandlesRef={edgeHandlesRef}
-            labels={labels}
-          />
+          {renderDecision.allowed && (
+            <GraphCanvas
+              graph={visibleGraph}
+              layout={workspace?.layout || "cose"}
+              selectedIds={selectedIds}
+              onSelection={onSelection}
+              onMove={onMove}
+              onViewport={onViewport}
+              onCanvasContext={openCanvasMenu}
+              onNodeContext={openNodeMenu}
+              onEdgeContext={openEdgeMenu}
+              onRelationDraft={setRelationDraft}
+              apiRef={apiRef}
+              edgeHandlesRef={edgeHandlesRef}
+              labels={labels}
+            />
+          )}
 
-          {!visibleGraph.nodes.length && !emptyStateDismissed && (
+          {!renderDecision.allowed && (
+            <div className="graph-empty-state graph-load-guard" role="alert">
+              <TriangleAlert size={38} />
+              <h2>Graph load blocked</h2>
+              <p>
+                This view expands to {renderDecision.estimate.documents.toLocaleString()} documents,{" "}
+                {renderDecision.estimate.nodes.toLocaleString()} nodes, and{" "}
+                {renderDecision.estimate.elements.toLocaleString()} total graph elements. The safe
+                cutoff is {renderDecision.limits.maxDocuments.toLocaleString()} documents,{" "}
+                {renderDecision.limits.maxNodes.toLocaleString()} nodes, or{" "}
+                {renderDecision.limits.maxElements.toLocaleString()} elements.
+              </p>
+              <p>Select a dataset above or open a smaller custom graph.</p>
+              <div className="button-row">
+                <Link className="button" to="/documents?group=dataset">
+                  Browse datasets
+                </Link>
+                <button className="button primary" onClick={() => setShowGraphCreate(true)}>
+                  New graph
+                </button>
+              </div>
+            </div>
+          )}
+
+          {renderDecision.allowed && !visibleGraph.nodes.length && !emptyStateDismissed && (
             <div className="graph-empty-state">
               <Network size={38} />
               <h2>{scopedDocuments.length ? "No graph nodes match" : "Start a blank graph"}</h2>
-              <p>{graph.nodes.length ? "Change or clear the active filters." : reviewGroups.unreviewed.length ? `${reviewGroups.unreviewed.length.toLocaleString()} unreviewed document(s) are hidden by the current review filter.` : "Right-click anywhere to create the first node, or use an action below."}</p>
+              <p>
+                {activeFilterLabels.length && scopedDocuments.length
+                  ? `Hidden by ${activeFilterLabels.join(", ")}.`
+                  : graph.nodes.length
+                    ? "No nodes remain after applying the current graph view."
+                    : reviewGroups.unreviewed.length
+                      ? `${reviewGroups.unreviewed.length.toLocaleString()} unreviewed document(s) are hidden by the current review filter.`
+                      : "Right-click anywhere to create the first node, or use an action below."}
+              </p>
               <div className="button-row">
-                {graph.nodes.length && <button className="button small" onClick={clearFilters}>Clear filters</button>}
-                {!graph.nodes.length && reviewGroups.unreviewed.length > 0 && <button className="button small" onClick={() => setReviewStatus("all")}>Show unreviewed</button>}
-                {!graph.nodes.length && activeGraph?.documentIds !== null && <button className="button small" onClick={() => setShowMembershipAdd(true)}>Add from corpus</button>}
-                {!graph.nodes.length && <button className="button primary small" onClick={() => openQuickAdd()}><Plus size={15} /> Create first node</button>}
-                {!graph.nodes.length && <Link className="button small" to="/import">Import documents</Link>}
-                <button className="button small" onClick={() => setEmptyStateDismissed(true)}>Enter blank canvas</button>
+                {activeFilterLabels.length > 0 && scopedDocuments.length > 0 && (
+                  <button className="button small" onClick={clearFilters}>
+                    Show all {scopedDocuments.length.toLocaleString()} documents
+                  </button>
+                )}
+                {!graph.nodes.length && reviewGroups.unreviewed.length > 0 && (
+                  <button className="button small" onClick={() => setReviewStatus("all")}>
+                    Show unreviewed
+                  </button>
+                )}
+                {!graph.nodes.length && activeGraph?.documentIds !== null && (
+                  <button className="button small" onClick={() => setShowMembershipAdd(true)}>
+                    Add from corpus
+                  </button>
+                )}
+                {!graph.nodes.length && (
+                  <button className="button primary small" onClick={() => openQuickAdd()}>
+                    <Plus size={15} /> Create first node
+                  </button>
+                )}
+                {!graph.nodes.length && (
+                  <Link className="button small" to="/import">
+                    Import documents
+                  </Link>
+                )}
+                <button className="button small" onClick={() => setEmptyStateDismissed(true)}>
+                  Enter blank canvas
+                </button>
               </div>
             </div>
           )}
 
           {canvasMenu && (
-            <div className={`graph-context-menu expanded ${canvasMenu.kind}-actions`} role="menu" aria-label={`${canvasMenu.kind} actions`} style={canvasMenuStyle} onContextMenu={(event) => event.preventDefault()}>
-              <div className="graph-context-header"><span className="context-kind">{canvasMenu.kind}</span><strong>{contextNode ? documentLabel(contextNode) : contextRelation ? documentLabel(contextRelation) : activeGraph?.name || "Graph"}</strong></div>
-              <label className="graph-context-search"><Search size={14} /><input aria-label="Search context actions" value={menuQuery} onChange={(event) => setMenuQuery(event.target.value)} placeholder="Find action…" /></label>
+            <div
+              className={`graph-context-menu expanded ${canvasMenu.kind}-actions`}
+              role="menu"
+              aria-label={`${canvasMenu.kind} actions`}
+              style={canvasMenuStyle}
+              onContextMenu={(event) => event.preventDefault()}
+            >
+              <div className="graph-context-header">
+                <span className="context-kind">{canvasMenu.kind}</span>
+                <strong>
+                  {contextNode
+                    ? documentLabel(contextNode)
+                    : contextRelation
+                      ? documentLabel(contextRelation)
+                      : activeGraph?.name || "Graph"}
+                </strong>
+                {contextResearchScope && (
+                  <span
+                    className={`research-state research-state-${contextNode.data?.status || "draft"}`}
+                  >
+                    {contextNode.data?.status || "draft"}
+                  </span>
+                )}
+              </div>
+              <label className="graph-context-search">
+                <Search size={14} />
+                <input
+                  aria-label="Search context actions"
+                  value={menuQuery}
+                  onChange={(event) => setMenuQuery(event.target.value)}
+                  placeholder="Find action…"
+                />
+              </label>
 
               {canvasMenu.kind === "node" && contextNode && (
                 <>
-                  {menuMatches("Edit") && <button role="menuitem" onClick={() => { setQuickEdit({ document: contextNode, position: canvasMenu }); setCanvasMenu(null); }}><Pencil size={15} /> Edit</button>}
-                  {menuMatches("Add relation") && <button role="menuitem" onClick={() => beginRelationFromNode(contextNode._id)}><Link2 size={15} /> Add relation</button>}
-                  {menuMatches("Open full editor") && <Link role="menuitem" to={`/documents/${encodeURIComponent(contextNode._id)}/edit?returnTo=graph`}><ExternalLink size={15} /> Open full editor</Link>}
-                  {menuMatches("Focus") && <button role="menuitem" onClick={() => { setCanvasMenu(null); focusSelection([contextNode._id]); }}><Focus size={15} /> Focus</button>}
-                  {menuMatches("Select neighbors") && <button role="menuitem" onClick={() => selectNeighbors(contextNode._id)}><Network size={15} /> Select neighbors</button>}
-                  {actorEntries.filter(({ actor }) => menuMatches(`Run actor ${actor.label}`)).map(({ actor, availability }) => (
-                    <button role="menuitem" key={actor.id} disabled={!availability.applicable || Boolean(runningActorId)} onClick={() => { setCanvasMenu(null); executeActor(actor); }}><Play size={15} /> Run actor: {actor.label}</button>
-                  ))}
-                  {menuMatches("Submit as target") && <button role="menuitem" onClick={() => { setCanvasMenu(null); setTargetDocument(contextNode); }}><Send size={15} /> Submit as target</button>}
-                  {menuMatches("Copy document ID") && <button role="menuitem" onClick={() => copyText(contextNode._id, "Copied document ID")}><Clipboard size={15} /> Copy document ID</button>}
-                  {menuMatches("Copy document JSON") && <button role="menuitem" onClick={() => copyText(JSON.stringify(contextNode, null, 2), "Copied document JSON")}><Copy size={15} /> Copy document JSON</button>}
+                  {menuMatches("Edit") && (
+                    <button
+                      role="menuitem"
+                      onClick={() => {
+                        if (isResearchNode(contextNode))
+                          setResearchDraft({ document: contextNode, position: canvasMenu });
+                        else setQuickEdit({ document: contextNode, position: canvasMenu });
+                        setCanvasMenu(null);
+                      }}
+                    >
+                      <Pencil size={15} /> Edit
+                    </button>
+                  )}
+                  {menuMatches("Create research node from selection") && (
+                    <button
+                      role="menuitem"
+                      onClick={() => {
+                        setResearchDraft({
+                          dataset: contextNode.dataset || "default",
+                          inputIds: selectedIds.length ? selectedIds : [contextNode._id],
+                          position: canvasMenu
+                        });
+                        setCanvasMenu(null);
+                      }}
+                    >
+                      <Network size={15} /> Create research node from selection
+                    </button>
+                  )}
+                  {menuMatches("Add relation") && (
+                    <button role="menuitem" onClick={() => beginRelationFromNode(contextNode._id)}>
+                      <Link2 size={15} /> Add relation
+                    </button>
+                  )}
+                  {menuMatches("Open full editor") && (
+                    <Link
+                      role="menuitem"
+                      to={`/documents/${encodeURIComponent(contextNode._id)}/edit?returnTo=graph`}
+                    >
+                      <ExternalLink size={15} /> Open full editor
+                    </Link>
+                  )}
+                  {menuMatches("Focus") && (
+                    <button
+                      role="menuitem"
+                      onClick={() => {
+                        setCanvasMenu(null);
+                        focusSelection([contextNode._id]);
+                      }}
+                    >
+                      <Focus size={15} /> Focus
+                    </button>
+                  )}
+                  {menuMatches("Select neighbors") && (
+                    <button role="menuitem" onClick={() => selectNeighbors(contextNode._id)}>
+                      <Network size={15} /> Select neighbors
+                    </button>
+                  )}
+                  {actorEntries
+                    .filter(({ actor }) => menuMatches(`Run actor ${actor.label}`))
+                    .map(({ actor, availability }) => (
+                      <button
+                        role="menuitem"
+                        key={actor.id}
+                        disabled={!availability.applicable || Boolean(runningActorId)}
+                        onClick={() => {
+                          setCanvasMenu(null);
+                          executeActor(actor);
+                        }}
+                      >
+                        <Play size={15} /> Run actor: {actor.label}
+                      </button>
+                    ))}
+                  {contextResearchScope &&
+                    !contextResearchActive &&
+                    ["draft", "queued", "running", "completed", "killed"].includes(
+                      contextResearchStatus
+                    ) &&
+                    menuMatches("Run research node") && (
+                      <button
+                        role="menuitem"
+                        onClick={() => executeResearchAction("run", contextNode)}
+                      >
+                        <Play size={15} />{" "}
+                        {["queued", "running"].includes(contextResearchStatus) ? "Continue" : "Run"}{" "}
+                        research node
+                      </button>
+                    )}
+                  {contextResearchScope &&
+                    contextResearchActive &&
+                    menuMatches("Pause research node") && (
+                      <button
+                        role="menuitem"
+                        onClick={() => executeResearchAction("pause", contextNode)}
+                      >
+                        <Pause size={15} /> Pause research node
+                      </button>
+                    )}
+                  {contextResearchScope &&
+                    contextResearchStatus === "paused" &&
+                    menuMatches("Resume research node") && (
+                      <button
+                        role="menuitem"
+                        onClick={() => executeResearchAction("resume", contextNode)}
+                      >
+                        <Play size={15} /> Resume research node
+                      </button>
+                    )}
+                  {contextResearchScope &&
+                    ["failed", "blocked"].includes(contextResearchStatus) &&
+                    menuMatches("Retry research node") && (
+                      <button
+                        role="menuitem"
+                        onClick={() => executeResearchAction("retry", contextNode)}
+                      >
+                        <RotateCcw size={15} /> Retry research node
+                      </button>
+                    )}
+                  {contextResearchScope &&
+                    ["queued", "running", "paused", "blocked", "failed"].includes(
+                      contextResearchStatus
+                    ) &&
+                    menuMatches("Kill research node") && (
+                      <button
+                        role="menuitem"
+                        className="danger"
+                        onClick={() => executeResearchAction("kill", contextNode)}
+                      >
+                        <Square size={15} /> Kill research node
+                      </button>
+                    )}
+                  {contextResearchScope && menuMatches("Inspect outputs") && (
+                    <button
+                      role="menuitem"
+                      disabled={!contextResearchScope.outputs.length}
+                      onClick={() => inspectResearchOutputs(contextNode)}
+                    >
+                      <Focus size={15} /> Inspect outputs ({contextResearchScope.outputs.length})
+                    </button>
+                  )}
+                  {contextResearchScope && menuMatches("Clone research node") && (
+                    <button role="menuitem" onClick={() => cloneContextResearchNode(contextNode)}>
+                      <Copy size={15} /> Clone research node
+                    </button>
+                  )}
+                  {menuMatches("Submit as target") && (
+                    <button
+                      role="menuitem"
+                      onClick={() => {
+                        setCanvasMenu(null);
+                        setTargetDocument(contextNode);
+                      }}
+                    >
+                      <Send size={15} /> Submit as target
+                    </button>
+                  )}
+                  {menuMatches("Copy document ID") && (
+                    <button
+                      role="menuitem"
+                      onClick={() => copyText(contextNode._id, "Copied document ID")}
+                    >
+                      <Clipboard size={15} /> Copy document ID
+                    </button>
+                  )}
+                  {menuMatches("Copy document JSON") && (
+                    <button
+                      role="menuitem"
+                      onClick={() =>
+                        copyText(JSON.stringify(contextNode, null, 2), "Copied document JSON")
+                      }
+                    >
+                      <Copy size={15} /> Copy document JSON
+                    </button>
+                  )}
                   <div className="graph-context-divider" />
-                  {activeGraph?.documentIds !== null && menuMatches("Hide") && <button role="menuitem" onClick={() => removeNodeFromGraph(contextNode._id)}><Trash2 size={15} /> Hide</button>}
-                  {menuMatches("Delete") && <button role="menuitem" className="danger" onClick={() => deleteCorpusDocuments(selectedIds.length > 1 ? selectedIds : [contextNode._id])}><Trash2 size={15} /> Delete</button>}
+                  {activeGraph?.documentIds !== null && menuMatches("Hide") && (
+                    <button role="menuitem" onClick={() => removeNodeFromGraph(contextNode._id)}>
+                      <Trash2 size={15} /> Hide
+                    </button>
+                  )}
+                  {menuMatches("Delete") && (
+                    <button
+                      role="menuitem"
+                      className="danger"
+                      onClick={() =>
+                        deleteCorpusDocuments(
+                          selectedIds.length > 1 ? selectedIds : [contextNode._id]
+                        )
+                      }
+                    >
+                      <Trash2 size={15} /> Delete
+                    </button>
+                  )}
                 </>
               )}
 
               {canvasMenu.kind === "edge" && contextRelation && (
                 <>
-                  {menuMatches("Edit relation") && <button role="menuitem" onClick={() => { setRelationEdit({ document: contextRelation, position: canvasMenu }); setCanvasMenu(null); }}><Pencil size={15} /> Edit relation</button>}
-                  {menuMatches("Reverse relation") && <button role="menuitem" onClick={() => reverseRelation(contextRelation)}><ArrowLeftRight size={15} /> Reverse relation</button>}
-                  {contextSourceId && menuMatches("Open source") && <Link role="menuitem" to={`/documents/${encodeURIComponent(contextSourceId)}`}><ExternalLink size={15} /> Open source</Link>}
-                  {contextTargetId && menuMatches("Open target") && <Link role="menuitem" to={`/documents/${encodeURIComponent(contextTargetId)}`}><ExternalLink size={15} /> Open target</Link>}
-                  {menuMatches("Inspect JSON") && <Link role="menuitem" to={`/documents/${encodeURIComponent(contextRelation._id)}`}><Copy size={15} /> Inspect JSON</Link>}
+                  {menuMatches("Edit relation") && (
+                    <button
+                      role="menuitem"
+                      onClick={() => {
+                        setRelationEdit({ document: contextRelation, position: canvasMenu });
+                        setCanvasMenu(null);
+                      }}
+                    >
+                      <Pencil size={15} /> Edit relation
+                    </button>
+                  )}
+                  {menuMatches("Reverse relation") && (
+                    <button role="menuitem" onClick={() => reverseRelation(contextRelation)}>
+                      <ArrowLeftRight size={15} /> Reverse relation
+                    </button>
+                  )}
+                  {contextSourceId && menuMatches("Open source") && (
+                    <Link role="menuitem" to={`/documents/${encodeURIComponent(contextSourceId)}`}>
+                      <ExternalLink size={15} /> Open source
+                    </Link>
+                  )}
+                  {contextTargetId && menuMatches("Open target") && (
+                    <Link role="menuitem" to={`/documents/${encodeURIComponent(contextTargetId)}`}>
+                      <ExternalLink size={15} /> Open target
+                    </Link>
+                  )}
+                  {menuMatches("Inspect JSON") && (
+                    <Link
+                      role="menuitem"
+                      to={`/documents/${encodeURIComponent(contextRelation._id)}`}
+                    >
+                      <Copy size={15} /> Inspect JSON
+                    </Link>
+                  )}
                   <div className="graph-context-divider" />
-                  {menuMatches("Delete") && <button role="menuitem" className="danger" onClick={() => deleteCorpusDocuments([contextRelation._id])}><Trash2 size={15} /> Delete</button>}
+                  {menuMatches("Delete") && (
+                    <button
+                      role="menuitem"
+                      className="danger"
+                      onClick={() => deleteCorpusDocuments([contextRelation._id])}
+                    >
+                      <Trash2 size={15} /> Delete
+                    </button>
+                  )}
                 </>
               )}
 
               {canvasMenu.kind === "canvas" && (
                 <>
-                  {QUICK_NODE_TYPES.filter(({ label }) => menuMatches(`Create ${label}`)).map(({ dtype: objectType, label, Icon }) => (
-                    <button key={objectType} role="menuitem" onClick={() => openQuickAdd(canvasMenu, objectType)}><Icon size={15} /> Create {label.toLowerCase()}</button>
-                  ))}
-                  {menuMatches("Other object type") && <button role="menuitem" onClick={() => openQuickAdd(canvasMenu)}><MoreHorizontal size={15} /> Other object type</button>}
+                  {QUICK_NODE_TYPES.filter(({ label }) => menuMatches(`Create ${label}`)).map(
+                    ({ dtype: objectType, label, Icon }) => (
+                      <button
+                        key={objectType}
+                        role="menuitem"
+                        onClick={() => openQuickAdd(canvasMenu, objectType)}
+                      >
+                        <Icon size={15} /> Create {label.toLowerCase()}
+                      </button>
+                    )
+                  )}
+                  {menuMatches("Other object type") && (
+                    <button role="menuitem" onClick={() => openQuickAdd(canvasMenu)}>
+                      <MoreHorizontal size={15} /> Other object type
+                    </button>
+                  )}
                   <div className="graph-context-divider" />
-                  {menuMatches("Fit graph") && <button role="menuitem" onClick={() => { fit(); setCanvasMenu(null); }}><Focus size={15} /> Fit graph</button>}
-                  {menuMatches("Focus selection") && <button role="menuitem" disabled={!selectedIds.length} onClick={() => { focusSelection(); setCanvasMenu(null); }}><Focus size={15} /> Focus selection</button>}
-                  {menuMatches("Clear filters") && <button role="menuitem" onClick={() => { clearFilters(); setCanvasMenu(null); }}><X size={15} /> Clear filters</button>}
-                  {['cose', 'breadthfirst', 'circle', 'concentric', 'grid'].filter((name) => menuMatches(`Layout ${name}`)).map((name) => <button role="menuitem" key={name} onClick={() => { runLayout(name); setCanvasMenu(null); }}><Grid2X2 size={15} /> Layout: {name}</button>)}
-                  {activeGraph?.documentIds !== null && menuMatches("Add from corpus") && <button role="menuitem" onClick={() => { setCanvasMenu(null); setShowMembershipAdd(true); }}><Database size={15} /> Add from corpus</button>}
-                  {menuMatches("Import documents") && <Link role="menuitem" to="/import"><ExternalLink size={15} /> Import documents</Link>}
-                  {menuMatches("Queue listener") && <button role="menuitem" disabled={!settings?.rabbitWebSocketUrl} onClick={toggleQueueListener}><RadioTower size={15} /> {queueStatus.state === "active" ? "Stop" : "Start"} queue listener</button>}
-                  {menuMatches("Connection settings") && <Link role="menuitem" to="/settings"><Server size={15} /> Connection settings</Link>}
-                  {menuMatches("New graph") && <button role="menuitem" onClick={() => { setCanvasMenu(null); setShowGraphCreate(true); }}><FolderPlus size={15} /> New graph</button>}
-                  {menuMatches("Clear graph") && <button role="menuitem" className="danger" onClick={clearCurrentGraph}><Trash2 size={15} /> Clear graph</button>}
+                  {menuMatches("Fit graph") && (
+                    <button
+                      role="menuitem"
+                      onClick={() => {
+                        fit();
+                        setCanvasMenu(null);
+                      }}
+                    >
+                      <Focus size={15} /> Fit graph
+                    </button>
+                  )}
+                  {menuMatches("Focus selection") && (
+                    <button
+                      role="menuitem"
+                      disabled={!selectedIds.length}
+                      onClick={() => {
+                        focusSelection();
+                        setCanvasMenu(null);
+                      }}
+                    >
+                      <Focus size={15} /> Focus selection
+                    </button>
+                  )}
+                  {menuMatches("Clear filters") && (
+                    <button
+                      role="menuitem"
+                      onClick={() => {
+                        clearFilters();
+                        setCanvasMenu(null);
+                      }}
+                    >
+                      <X size={15} /> Clear filters
+                    </button>
+                  )}
+                  {["cose", "breadthfirst", "circle", "concentric", "grid"]
+                    .filter((name) => menuMatches(`Layout ${name}`))
+                    .map((name) => (
+                      <button
+                        role="menuitem"
+                        key={name}
+                        onClick={() => {
+                          runLayout(name);
+                          setCanvasMenu(null);
+                        }}
+                      >
+                        <Grid2X2 size={15} /> Layout: {name}
+                      </button>
+                    ))}
+                  {activeGraph?.documentIds !== null && menuMatches("Add from corpus") && (
+                    <button
+                      role="menuitem"
+                      onClick={() => {
+                        setCanvasMenu(null);
+                        setShowMembershipAdd(true);
+                      }}
+                    >
+                      <Database size={15} /> Add from corpus
+                    </button>
+                  )}
+                  {menuMatches("Import documents") && (
+                    <Link role="menuitem" to="/import">
+                      <ExternalLink size={15} /> Import documents
+                    </Link>
+                  )}
+                  {menuMatches("Queue listener") && (
+                    <button
+                      role="menuitem"
+                      disabled={!settings?.rabbitWebSocketUrl}
+                      onClick={toggleQueueListener}
+                    >
+                      <RadioTower size={15} /> {queueStatus.state === "active" ? "Stop" : "Start"}{" "}
+                      queue listener
+                    </button>
+                  )}
+                  {menuMatches("Connection settings") && (
+                    <Link role="menuitem" to="/settings">
+                      <Server size={15} /> Connection settings
+                    </Link>
+                  )}
+                  {menuMatches("New graph") && (
+                    <button
+                      role="menuitem"
+                      onClick={() => {
+                        setCanvasMenu(null);
+                        setShowGraphCreate(true);
+                      }}
+                    >
+                      <FolderPlus size={15} /> New graph
+                    </button>
+                  )}
+                  {menuMatches("Clear graph") && (
+                    <button role="menuitem" className="danger" onClick={clearCurrentGraph}>
+                      <Trash2 size={15} /> Clear graph
+                    </button>
+                  )}
                 </>
               )}
             </div>
           )}
 
-          {nodeDraft && <CompactNodeEditor objectType={nodeDraft.objectType} dataset={nodeDraft.dataset} position={nodeDraft.position} onClose={() => setNodeDraft(null)} onSaved={() => setReviewStatus("all")} />}
-          {quickEdit && <CompactNodeEditor document={quickEdit.document} position={quickEdit.position} onClose={() => setQuickEdit(null)} />}
-          {relationDraft && <CompactRelationEditor key={relationDraft.ids.join(":")} ids={relationDraft.ids} documents={scopedDocuments} position={relationDraft} onClose={() => setRelationDraft(null)} />}
-          {relationEdit && <CompactRelationEditor relationDocument={relationEdit.document} documents={documents} position={relationEdit.position} onClose={() => setRelationEdit(null)} />}
+          {nodeDraft && (
+            <CompactNodeEditor
+              objectType={nodeDraft.objectType}
+              dataset={nodeDraft.dataset}
+              position={nodeDraft.position}
+              onClose={() => setNodeDraft(null)}
+              onSaved={() => setReviewStatus("all")}
+            />
+          )}
+          {quickEdit && (
+            <CompactNodeEditor
+              document={quickEdit.document}
+              position={quickEdit.position}
+              onClose={() => setQuickEdit(null)}
+            />
+          )}
+          {researchDraft && (
+            <CompactResearchNodeEditor
+              document={researchDraft.document || null}
+              dataset={researchDraft.dataset || "default"}
+              inputIds={researchDraft.inputIds || []}
+              position={researchDraft.position}
+              onClose={() => setResearchDraft(null)}
+              onSaved={() => setReviewStatus("all")}
+            />
+          )}
+          {relationDraft && (
+            <CompactRelationEditor
+              key={relationDraft.ids.join(":")}
+              ids={relationDraft.ids}
+              documents={scopedDocuments}
+              position={relationDraft}
+              onClose={() => setRelationDraft(null)}
+            />
+          )}
+          {relationEdit && (
+            <CompactRelationEditor
+              relationDocument={relationEdit.document}
+              documents={documents}
+              position={relationEdit.position}
+              onClose={() => setRelationEdit(null)}
+            />
+          )}
         </div>
 
         <aside className="graph-inspector">
           <section>
-            <h2>Selection <span>{selectedIds.length}</span></h2>
-            {!selectedIds.length && <p className="muted">Select nodes with click, Shift-click, or box selection. Double-click opens a document route.</p>}
+            <h2>
+              Selection <span>{selectedIds.length}</span>
+            </h2>
+            {!selectedIds.length && (
+              <p className="muted">
+                Select nodes with click, Shift-click, or box selection. Double-click opens a
+                document route.
+              </p>
+            )}
             {selected && (
               <>
                 <div className="selection-badges">
                   <span className={`dtype dtype-${selected.dtype}`}>{selected.dtype}</span>
-                  <span className={`review-badge review-badge-${selected.verification?.verified === true ? "reviewed" : "unreviewed"}`}>{selected.verification?.verified === true ? "reviewed" : "unreviewed"}</span>
+                  <span
+                    className={`review-badge review-badge-${selected.verification?.verified === true ? "reviewed" : "unreviewed"}`}
+                  >
+                    {selected.verification?.verified === true ? "reviewed" : "unreviewed"}
+                  </span>
                 </div>
                 <h3>{documentLabel(selected)}</h3>
                 <code>{selected._id}</code>
-                <small className="inspector-dataset">Dataset: {selected.dataset || "unknown"}</small>
+                <small className="inspector-dataset">
+                  Dataset: {selected.dataset || "unknown"}
+                </small>
                 {selected.summary && <p>{selected.summary}</p>}
+                {selectedResearchScope && (
+                  <div className="research-node-summary">
+                    <span
+                      className={`research-state research-state-${selected.data?.status || "draft"}`}
+                    >
+                      Research state: {selected.data?.status || "draft"}
+                    </span>
+                    <small>
+                      {selectedResearchScope.inputs.length} inputs ·{" "}
+                      {selectedResearchScope.outputs.length} outputs ·{" "}
+                      {selectedResearchScope.actors.length} actors
+                    </small>
+                  </div>
+                )}
                 <div className="inspector-actions">
-                  <Link className="button small" to={`/documents/${encodeURIComponent(selected._id)}`}><ExternalLink size={14} /> Open</Link>
-                  <button className="button small" onClick={() => setQuickEdit({ document: selected, position: null })}><Pencil size={14} /> Edit</button>
+                  <Link
+                    className="button small"
+                    to={`/documents/${encodeURIComponent(selected._id)}`}
+                  >
+                    <ExternalLink size={14} /> Open
+                  </Link>
+                  <button
+                    className="button small"
+                    onClick={() =>
+                      isResearchNode(selected)
+                        ? setResearchDraft({ document: selected, position: null })
+                        : setQuickEdit({ document: selected, position: null })
+                    }
+                  >
+                    <Pencil size={14} /> Edit
+                  </button>
+                  {selectedResearchScope &&
+                    !selectedResearchActive &&
+                    ["draft", "queued", "running", "completed", "killed"].includes(
+                      selectedResearchStatus
+                    ) && (
+                      <button
+                        className="button small"
+                        onClick={() => executeResearchAction("run", selected)}
+                      >
+                        <Play size={14} />{" "}
+                        {["queued", "running"].includes(selectedResearchStatus)
+                          ? "Continue"
+                          : "Run"}
+                      </button>
+                    )}
+                  {selectedResearchScope && selectedResearchActive && (
+                    <button
+                      className="button small"
+                      onClick={() => executeResearchAction("pause", selected)}
+                    >
+                      <Pause size={14} /> Pause
+                    </button>
+                  )}
+                  {selectedResearchScope && selectedResearchStatus === "paused" && (
+                    <button
+                      className="button small"
+                      onClick={() => executeResearchAction("resume", selected)}
+                    >
+                      <Play size={14} /> Resume
+                    </button>
+                  )}
+                  {selectedResearchScope &&
+                    ["failed", "blocked"].includes(selectedResearchStatus) && (
+                      <button
+                        className="button small"
+                        onClick={() => executeResearchAction("retry", selected)}
+                      >
+                        <RotateCcw size={14} /> Retry
+                      </button>
+                    )}
+                  {selectedResearchScope &&
+                    ["queued", "running", "paused", "blocked", "failed"].includes(
+                      selectedResearchStatus
+                    ) && (
+                      <button
+                        className="button small danger"
+                        onClick={() => executeResearchAction("kill", selected)}
+                      >
+                        <Square size={14} /> Kill
+                      </button>
+                    )}
+                  {selectedResearchScope && (
+                    <button
+                      className="button small"
+                      disabled={!selectedResearchScope.outputs.length}
+                      onClick={() => inspectResearchOutputs(selected)}
+                    >
+                      <Focus size={14} /> Outputs
+                    </button>
+                  )}
                 </div>
               </>
             )}
-            {selectedIds.length > 1 && <div className="selection-list">{selectedIds.map((id) => <code key={id}>{id}</code>)}</div>}
+            {selectedIds.length > 1 && (
+              <div className="selection-list">
+                {selectedIds.map((id) => (
+                  <code key={id}>{id}</code>
+                ))}
+              </div>
+            )}
           </section>
 
           <section>
             <h2>Connection finder</h2>
-            <select value={pathStart} onChange={(event) => setPathStart(event.target.value)}><option value="">From…</option>{nodeOptions.map((node) => <option key={node.data.id} value={node.data.id}>{node.data.label}</option>)}</select>
-            <select value={pathEnd} onChange={(event) => setPathEnd(event.target.value)}><option value="">To…</option>{nodeOptions.map((node) => <option key={node.data.id} value={node.data.id}>{node.data.label}</option>)}</select>
-            <button className="button small full" onClick={calculatePaths} disabled={!pathStart || !pathEnd}><Network size={14} /> Find routes</button>
+            <select value={pathStart} onChange={(event) => setPathStart(event.target.value)}>
+              <option value="">From…</option>
+              {nodeOptions.map((node) => (
+                <option key={node.data.id} value={node.data.id}>
+                  {node.data.label}
+                </option>
+              ))}
+            </select>
+            <select value={pathEnd} onChange={(event) => setPathEnd(event.target.value)}>
+              <option value="">To…</option>
+              {nodeOptions.map((node) => (
+                <option key={node.data.id} value={node.data.id}>
+                  {node.data.label}
+                </option>
+              ))}
+            </select>
+            <button
+              className="button small full"
+              onClick={calculatePaths}
+              disabled={!pathStart || !pathEnd}
+            >
+              <Network size={14} /> Find routes
+            </button>
             <div className="path-results">
               {paths.map((path, index) => (
-                <button key={`${path.nodes.join(":")}:${index}`} className={activePath === index ? "path-result active" : "path-result"} onClick={() => applyPath(paths, index)}>
-                  <strong>Route {index + 1}</strong><span>{path.edges.length} hops · cost {path.cost.toFixed(2)}</span><small>{path.nodes.map((id) => graph.nodes.find((node) => node.data.id === id)?.data.label || id).join(" → ")}</small>
+                <button
+                  key={`${path.nodes.join(":")}:${index}`}
+                  className={activePath === index ? "path-result active" : "path-result"}
+                  onClick={() => applyPath(paths, index)}
+                >
+                  <strong>Route {index + 1}</strong>
+                  <span>
+                    {path.edges.length} hops · cost {path.cost.toFixed(2)}
+                  </span>
+                  <small>
+                    {path.nodes
+                      .map(
+                        (id) => graph.nodes.find((node) => node.data.id === id)?.data.label || id
+                      )
+                      .join(" → ")}
+                  </small>
                 </button>
               ))}
             </div>
@@ -1021,26 +2244,57 @@ export default function GraphPage() {
 
           <section>
             <h2>Browser actors</h2>
-            {!settings?.actorsEnabled && <p className="muted">Built-in actors are ready. Enable custom actor code in Settings when needed.</p>}
+            {!settings?.actorsEnabled && (
+              <p className="muted">
+                Built-in actors are ready. Enable custom actor code in Settings when needed.
+              </p>
+            )}
             {actorEntries.map(({ actor, builtin, availability }) => {
               const customDisabled = !builtin && !settings?.actorsEnabled;
-              const reason = customDisabled ? "Custom actor execution is disabled." : availability.reason;
+              const reason = customDisabled
+                ? "Custom actor execution is disabled."
+                : availability.reason;
               const running = runningActorId === actor.id;
               return (
-                <button key={actor.id} className="actor-button" disabled={Boolean(runningActorId) || customDisabled || !availability.applicable} title={reason || actor.description || actor.id} onClick={() => executeActor(actor)}>
+                <button
+                  key={actor.id}
+                  className="actor-button"
+                  disabled={Boolean(runningActorId) || customDisabled || !availability.applicable}
+                  title={reason || actor.description || actor.id}
+                  onClick={() => executeActor(actor)}
+                >
                   <Play size={14} />
-                  <span><strong>{running ? "Running…" : actor.label}</strong><small>{reason || actor.description || actor.id}</small></span>
+                  <span>
+                    <strong>{running ? "Running…" : actor.label}</strong>
+                    <small>{reason || actor.description || actor.id}</small>
+                  </span>
                 </button>
               );
             })}
-            {lastActorRun && <div className="actor-result" role="status"><strong>{lastActorRun.produced} document(s) returned</strong><span>{lastActorRun.message}</span></div>}
+            {lastActorRun && (
+              <div className="actor-result" role="status">
+                <strong>{lastActorRun.produced} document(s) returned</strong>
+                <span>{lastActorRun.message}</span>
+              </div>
+            )}
           </section>
         </aside>
       </div>
 
-      {showGraphCreate && <GraphCreate onCreate={createNamedGraph} onClose={() => setShowGraphCreate(false)} />}
-      {showMembershipAdd && <GraphMembershipAdd documents={documents} existingIds={activeGraph?.documentIds || []} onAdd={addExistingDocuments} onClose={() => setShowMembershipAdd(false)} />}
-      {targetDocument && <TargetSubmit document={targetDocument} onClose={() => setTargetDocument(null)} />}
+      {showGraphCreate && (
+        <GraphCreate onCreate={createNamedGraph} onClose={() => setShowGraphCreate(false)} />
+      )}
+      {showMembershipAdd && (
+        <GraphMembershipAdd
+          documents={documents}
+          existingIds={activeGraph?.documentIds || []}
+          onAdd={addExistingDocuments}
+          onClose={() => setShowMembershipAdd(false)}
+        />
+      )}
+      {targetDocument && (
+        <TargetSubmit document={targetDocument} onClose={() => setTargetDocument(null)} />
+      )}
     </section>
   );
 }
