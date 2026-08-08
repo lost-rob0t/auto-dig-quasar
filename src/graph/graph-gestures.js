@@ -2,17 +2,12 @@ const GESTURE_SCRATCH = "quasar-graph-gestures";
 const DESKTOP_DROP_PADDING = 14;
 const TOUCH_DROP_PADDING = 30;
 const DRAG_THRESHOLD_SQUARED = 36;
-const USER_NAVIGATION_GUARD_MS = 360;
+const CONTEXT_TAP_SUPPRESS_MS = 250;
 
 function distanceSquared(left, right) {
   const dx = left.x - right.x;
   const dy = left.y - right.y;
   return dx * dx + dy * dy;
-}
-
-function editableTarget(target) {
-  return target instanceof HTMLElement
-    && Boolean(target.closest("input, textarea, select, button, [contenteditable='true']"));
 }
 
 export function boxesOverlap(left, right, padding = 0) {
@@ -24,33 +19,19 @@ export function boxesOverlap(left, right, padding = 0) {
   );
 }
 
+export function selectionBoxFromPoints(start, end) {
+  return {
+    x1: Math.min(start.x, end.x),
+    y1: Math.min(start.y, end.y),
+    x2: Math.max(start.x, end.x),
+    y2: Math.max(start.y, end.y)
+  };
+}
+
 export function relationDropPadding(pointerType = "") {
   return pointerType === "touch" || pointerType === "pen"
     ? TOUCH_DROP_PADDING
     : DESKTOP_DROP_PADDING;
-}
-
-export function shouldStartManualPan(event, spacePressed = false) {
-  if (!event || event.pointerType === "touch" || event.pointerType === "pen") return false;
-  return event.button === 1 || (spacePressed && event.button === 0);
-}
-
-export function shouldStartTouchPan(event) {
-  return event?.pointerType === "touch" || event?.pointerType === "pen";
-}
-
-export function markUserNavigation(
-  state,
-  now = Date.now(),
-  duration = USER_NAVIGATION_GUARD_MS
-) {
-  if (!state) return 0;
-  state.userNavigationUntil = Math.max(state.userNavigationUntil || 0, now + duration);
-  return state.userNavigationUntil;
-}
-
-export function isUserNavigationActive(state, now = Date.now()) {
-  return Boolean(state && now < (state.userNavigationUntil || 0));
 }
 
 export function selectSingleNode(cy, node) {
@@ -67,128 +48,30 @@ export function selectSingleNode(cy, node) {
   return true;
 }
 
-export function installUserNavigationGuard(cy, state) {
-  const nativePanBy = cy.panBy.bind(cy);
-  state.nativePanBy = nativePanBy;
-  cy.panBy = (...args) => (
-    isUserNavigationActive(state) ? cy : nativePanBy(...args)
-  );
+export function selectNodesInRenderedBox(cy, box) {
+  if (!cy || !box) return [];
 
-  return () => {
-    cy.panBy = nativePanBy;
-    state.nativePanBy = null;
-  };
-}
+  const matches = [];
+  cy.nodes().forEach((node) => {
+    if (typeof node.visible === "function" && !node.visible()) return;
+    const bounds = node.renderedBoundingBox({
+      includeLabels: false,
+      includeOverlays: false
+    });
+    if (boxesOverlap(bounds, box)) matches.push(node);
+  });
 
-function installPanControls(cy, state) {
-  const container = cy.container?.();
-  if (!container) return () => {};
-
-  const baseUserPanning = cy.userPanningEnabled();
-  const previousTabIndex = container.getAttribute("tabindex");
-  if (previousTabIndex === null) container.tabIndex = 0;
-
-  const finishManualPan = (event) => {
-    if (!state.manualPan || event.pointerId !== state.manualPan.pointerId) return;
-    try {
-      container.releasePointerCapture?.(event.pointerId);
-    } catch {
-      // Pointer capture may already have been released by the browser.
+  const apply = () => {
+    const selected = cy.$("node:selected");
+    if (selected.length) selected.unselect();
+    for (const node of matches) {
+      if (!node.selected()) node.select();
     }
-    state.manualPan = null;
   };
 
-  const releasePointer = (event) => {
-    finishManualPan(event);
-    if (!state.touchPointers.delete(event.pointerId)) return;
-    if (!state.touchPointers.size) cy.userPanningEnabled(baseUserPanning);
-  };
-
-  const reset = () => {
-    state.manualPan = null;
-    state.touchPointers.clear();
-    state.spacePressed = false;
-    cy.userPanningEnabled(baseUserPanning);
-  };
-
-  const onPointerDown = (event) => {
-    container.focus({ preventScroll: true });
-
-    if (shouldStartTouchPan(event)) {
-      state.touchPointers.add(event.pointerId);
-      cy.userPanningEnabled(true);
-      return;
-    }
-
-    if (!shouldStartManualPan(event, state.spacePressed)) return;
-    state.manualPan = {
-      pointerId: event.pointerId,
-      x: event.clientX,
-      y: event.clientY
-    };
-    container.setPointerCapture?.(event.pointerId);
-    markUserNavigation(state);
-    event.preventDefault();
-    event.stopPropagation();
-  };
-
-  const onPointerMove = (event) => {
-    const pan = state.manualPan;
-    if (!pan || event.pointerId !== pan.pointerId) return;
-    const x = event.clientX;
-    const y = event.clientY;
-    const shift = { x: x - pan.x, y: y - pan.y };
-    pan.x = x;
-    pan.y = y;
-
-    if (shift.x || shift.y) {
-      markUserNavigation(state);
-      state.nativePanBy?.(shift);
-    }
-    event.preventDefault();
-    event.stopPropagation();
-  };
-
-  const onPointerEnter = () => { state.pointerInside = true; };
-  const onPointerLeave = () => { state.pointerInside = false; };
-  const onKeyDown = (event) => {
-    if (
-      event.code !== "Space"
-      || event.repeat
-      || editableTarget(event.target)
-      || !state.pointerInside
-    ) return;
-    state.spacePressed = true;
-    event.preventDefault();
-  };
-  const onKeyUp = (event) => {
-    if (event.code === "Space") state.spacePressed = false;
-  };
-
-  container.addEventListener("pointerdown", onPointerDown, true);
-  container.addEventListener("pointermove", onPointerMove, true);
-  container.addEventListener("pointerenter", onPointerEnter);
-  container.addEventListener("pointerleave", onPointerLeave);
-  window.addEventListener("pointerup", releasePointer);
-  window.addEventListener("pointercancel", releasePointer);
-  window.addEventListener("keydown", onKeyDown);
-  window.addEventListener("keyup", onKeyUp);
-  window.addEventListener("blur", reset);
-
-  return () => {
-    container.removeEventListener("pointerdown", onPointerDown, true);
-    container.removeEventListener("pointermove", onPointerMove, true);
-    container.removeEventListener("pointerenter", onPointerEnter);
-    container.removeEventListener("pointerleave", onPointerLeave);
-    window.removeEventListener("pointerup", releasePointer);
-    window.removeEventListener("pointercancel", releasePointer);
-    window.removeEventListener("keydown", onKeyDown);
-    window.removeEventListener("keyup", onKeyUp);
-    window.removeEventListener("blur", reset);
-    if (previousTabIndex === null) container.removeAttribute("tabindex");
-    else container.setAttribute("tabindex", previousTabIndex);
-    cy.userPanningEnabled(baseUserPanning);
-  };
+  if (typeof cy.batch === "function") cy.batch(apply);
+  else apply();
+  return matches.map((node) => node.id());
 }
 
 export function findRelationDropTarget(cy, sourceNode, padding = DESKTOP_DROP_PADDING) {
@@ -221,6 +104,108 @@ function pointerTypeFromEvent(event) {
   const originalEvent = event?.originalEvent;
   if (!originalEvent || !("pointerType" in originalEvent)) return "";
   return typeof originalEvent.pointerType === "string" ? originalEvent.pointerType : "";
+}
+
+function suppressEvent(event) {
+  event?.preventDefault?.();
+  event?.stopImmediatePropagation?.();
+  event?.stopPropagation?.();
+  event?.originalEvent?.preventDefault?.();
+  event?.originalEvent?.stopImmediatePropagation?.();
+  event?.originalEvent?.stopPropagation?.();
+}
+
+function createSelectionOverlay(container) {
+  if (typeof document === "undefined") return null;
+  const overlay = document.createElement("div");
+  overlay.className = "graph-right-drag-selection";
+  Object.assign(overlay.style, {
+    position: "absolute",
+    display: "none",
+    pointerEvents: "none",
+    zIndex: "40",
+    border: "1px solid var(--accent, #f5c542)",
+    background: "color-mix(in srgb, var(--accent, #f5c542) 18%, transparent)",
+    boxSizing: "border-box"
+  });
+  container.append(overlay);
+  return overlay;
+}
+
+function updateSelectionOverlay(overlay, box) {
+  if (!overlay) return;
+  overlay.style.display = "block";
+  overlay.style.left = `${box.x1}px`;
+  overlay.style.top = `${box.y1}px`;
+  overlay.style.width = `${Math.max(1, box.x2 - box.x1)}px`;
+  overlay.style.height = `${Math.max(1, box.y2 - box.y1)}px`;
+}
+
+function hideSelectionOverlay(overlay) {
+  if (overlay) overlay.style.display = "none";
+}
+
+function installRightDragSelection(cy, state) {
+  const container = cy.container?.();
+  if (!container) return () => {};
+
+  const overlay = createSelectionOverlay(container);
+  state.selectionOverlay = overlay;
+
+  cy.on("cxttapstart", (event) => {
+    const pointerType = pointerTypeFromEvent(event);
+    if (pointerType === "touch" || pointerType === "pen" || !event.renderedPosition) return;
+    state.rightDrag = {
+      start: { ...event.renderedPosition },
+      current: { ...event.renderedPosition },
+      moved: false
+    };
+  });
+
+  cy.on("cxtdrag", (event) => {
+    const drag = state.rightDrag;
+    if (!drag || !event.renderedPosition) return;
+    drag.current = { ...event.renderedPosition };
+    if (!drag.moved) {
+      drag.moved = distanceSquared(drag.start, drag.current) >= DRAG_THRESHOLD_SQUARED;
+    }
+    if (!drag.moved) return;
+    updateSelectionOverlay(overlay, selectionBoxFromPoints(drag.start, drag.current));
+    suppressEvent(event);
+  });
+
+  cy.on("cxttapend", (event) => {
+    const drag = state.rightDrag;
+    state.rightDrag = null;
+    hideSelectionOverlay(overlay);
+    if (!drag?.moved) return;
+
+    const end = event.renderedPosition || drag.current;
+    selectNodesInRenderedBox(cy, selectionBoxFromPoints(drag.start, end));
+    state.suppressContextTapUntil = Date.now() + CONTEXT_TAP_SUPPRESS_MS;
+    clearTimeout(state.suppressContextTapTimer);
+    state.suppressContextTapTimer = setTimeout(() => {
+      state.suppressContextTapUntil = 0;
+      state.suppressContextTapTimer = null;
+    }, CONTEXT_TAP_SUPPRESS_MS);
+    suppressEvent(event);
+  });
+
+  cy.on("cxttap", (event) => {
+    if (Date.now() < state.suppressContextTapUntil) {
+      suppressEvent(event);
+      return;
+    }
+    if (event.target?.isNode?.()) selectSingleNode(cy, event.target);
+  });
+
+  return () => {
+    clearTimeout(state.suppressContextTapTimer);
+    hideSelectionOverlay(overlay);
+    overlay?.remove();
+    state.selectionOverlay = null;
+    state.rightDrag = null;
+  };
 }
 
 function emitContextTap(event) {
@@ -271,33 +256,27 @@ export function installGraphGestures(cy) {
     armedNodeId: null,
     drag: null,
     panningEnabled: true,
-    pointerInside: false,
-    spacePressed: false,
-    manualPan: null,
-    touchPointers: new Set(),
-    userNavigationUntil: 0,
-    nativePanBy: null
+    rightDrag: null,
+    selectionOverlay: null,
+    suppressContextTapUntil: 0,
+    suppressContextTapTimer: null
   };
   cy.scratch(GESTURE_SCRATCH, state);
 
-  const restorePanBy = installUserNavigationGuard(cy, state);
-  const removePanControls = installPanControls(cy, state);
+  const removeRightDragSelection = installRightDragSelection(cy, state);
 
   cy.on("tap", (event) => {
     if (event.target === cy) state.armedNodeId = null;
   });
   cy.on("tap", "node", (event) => {
-    if (!event.target.data("unresolved")) state.armedNodeId = event.target.id();
+    if (event.target.data("unresolved")) return;
+    state.armedNodeId = event.target.id();
   });
   cy.on("unselect", "node", (event) => {
     if (state.armedNodeId === event.target.id()) state.armedNodeId = null;
   });
   cy.on("dragpan scrollzoom pinchzoom", () => {
     state.armedNodeId = null;
-    markUserNavigation(state);
-  });
-  cy.on("cxttapstart cxttap", "node", (event) => {
-    selectSingleNode(cy, event.target);
   });
   cy.on("grab", "node", (event) => {
     const node = event.target;
@@ -313,10 +292,7 @@ export function installGraphGestures(cy) {
       pointerType,
       moved: false
     };
-    if (!node.selected()) {
-      cy.$("node:selected").unselect();
-      node.select();
-    }
+    if (!node.selected()) selectSingleNode(cy, node);
   });
   cy.on("drag", "node", (event) => {
     if (!state.drag || state.drag.id !== event.target.id()) return;
@@ -346,16 +322,18 @@ export function installGraphGestures(cy) {
     state.armedNodeId = null;
     emitRelationDraft(cy, sourceNode, targetNode);
   });
-  cy.on("free", "node", () => {
-    if (!state.drag) cy.panningEnabled(state.panningEnabled);
+  cy.on("free", "node", (event) => {
+    if (!state.drag || state.drag.id !== event.target.id()) return;
+    state.drag = null;
+    cy.panningEnabled(state.panningEnabled);
+    state.armedNodeId = event.target.id();
   });
   cy.on("taphold", (event) => {
     if (state.drag?.moved) return;
     emitContextTap(event);
   });
   cy.on("destroy", () => {
-    removePanControls();
-    restorePanBy();
+    removeRightDragSelection();
   });
 
   return cy;

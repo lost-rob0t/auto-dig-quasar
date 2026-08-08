@@ -2,6 +2,7 @@ import cytoscape from "cytoscape";
 import edgehandles from "cytoscape-edgehandles";
 import { installGraphGestures } from "./graph-gestures";
 import { installMaltegoLayouts } from "./maltego-layouts";
+import { installUserNavigationGuard } from "./user-navigation-guard";
 
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 const AUTO_NODE_SPACING = 96;
@@ -51,15 +52,33 @@ function installAutomaticNodePlacement(cy) {
   return cy;
 }
 
+function exposeDevelopmentGraph(cy) {
+  const container = cy.container?.();
+  if (!import.meta.env.DEV || !container) return;
+
+  Object.defineProperty(container, "__quasarGraphAdapter", {
+    configurable: true,
+    value: cy
+  });
+  cy.on("destroy", () => {
+    delete container.__quasarGraphAdapter;
+  });
+}
+
 export class GraphAdapter {
   static create(options) {
     registerPlugins();
     const cy = installMaltegoLayouts(cytoscape({
       ...options,
-      userPanningEnabled: options.userPanningEnabled ?? false
+      userPanningEnabled: options.userPanningEnabled ?? true,
+      selectionType: "single"
     }));
+    const restoreUserNavigation = installUserNavigationGuard(cy);
+    cy.on("destroy", restoreUserNavigation);
     installAutomaticNodePlacement(cy);
-    return installGraphGestures(cy);
+    const graph = installGraphGestures(cy);
+    exposeDevelopmentGraph(graph);
+    return graph;
   }
 }
 
