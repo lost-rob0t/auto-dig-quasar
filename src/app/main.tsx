@@ -6,6 +6,7 @@ import GraphContextRadialBridge from "../components/GraphContextRadialBridge.jsx
 import GraphObjectTypePickerBridge from "../components/GraphObjectTypePickerBridge.jsx";
 import MobileGraphToolTray from "../components/MobileGraphToolTray.jsx";
 import OperatorUiEnhancer from "../components/OperatorUiEnhancer.jsx";
+import ProviderBrandIcons from "../components/ProviderBrandIcons.jsx";
 import { AutoDigProvider } from "../auto-dig/bridge/context.jsx";
 import { isAutoDigEmbedded } from "../auto-dig/bridge/client";
 import AutoDigRuntime from "../auto-dig/components/AutoDigRuntime.jsx";
@@ -51,6 +52,7 @@ createRoot(rootElement).render(
             <AutoDigRuntime />
             <CorrectionActionSurface />
             <OperatorUiEnhancer />
+            <ProviderBrandIcons />
             <MobileGraphToolTray />
             <GraphContextRadialBridge />
             <GraphObjectTypePickerBridge />
