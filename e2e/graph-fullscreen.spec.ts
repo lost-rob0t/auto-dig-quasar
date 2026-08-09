@@ -26,5 +26,5 @@ test("uses a fullscreen desktop graph with a navigation menu", async ({ page }) 
   await page.getByRole("button", { name: "Open menu" }).click();
   await expect(page.getByRole("dialog", { name: "Navigation" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Graph", exact: true })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Docs", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Documents", exact: true })).toBeVisible();
 });
