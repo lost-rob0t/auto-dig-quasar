@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import {
   Activity,
-  Bot,
+  CircleAlert,
+  Code2,
   Database,
   Download,
   FilePlus2,
@@ -35,7 +36,7 @@ const navigation = [
   { to: "/graph", label: "Graph", mobileLabel: "Graph", Icon: Network },
   { to: "/documents", label: "Documents", mobileLabel: "Docs", Icon: TableProperties },
   { to: "/documents/new", label: "Add document", Icon: FilePlus2 },
-  { to: "/agents", label: "Actors", mobileLabel: "Actors", Icon: Bot },
+  { to: "/actors", label: "Actors", mobileLabel: "Actors", Icon: Code2 },
   { to: "/tipline", label: "Tipline", mobileLabel: "Tips", Icon: Inbox },
   { to: "/import", label: "Import", Icon: FolderInput },
   { to: "/settings", label: "Settings", Icon: Settings },
@@ -48,9 +49,19 @@ function SyncBadge() {
   const { syncStatus, serverStatus, queueStatus } = useQuasar();
   return (
     <div className="connection-badges">
-      <span className={`sync-badge sync-${syncStatus.state}`} title={`CouchDB: ${syncStatus.message}`}>db {syncStatus.state}</span>
-      {serverStatus.state !== "offline" && <span className={`sync-badge sync-${serverStatus.state}`} title={serverStatus.message}>api {serverStatus.state}</span>}
-      {queueStatus.state !== "offline" && <span className={`sync-badge sync-${queueStatus.state}`} title={queueStatus.message}>queue {queueStatus.state}</span>}
+      <span className={`sync-badge sync-${syncStatus.state}`} title={`CouchDB: ${syncStatus.message}`}>
+        db {syncStatus.state}
+      </span>
+      {serverStatus.state !== "offline" && (
+        <span className={`sync-badge sync-${serverStatus.state}`} title={serverStatus.message}>
+          api {serverStatus.state}
+        </span>
+      )}
+      {queueStatus.state !== "offline" && (
+        <span className={`sync-badge sync-${queueStatus.state}`} title={queueStatus.message}>
+          queue {queueStatus.state}
+        </span>
+      )}
     </div>
   );
 }
@@ -93,7 +104,12 @@ function InstallButton() {
 function NavigationLinks({ mobile = false }) {
   const links = mobile ? mobileNavigation : navigation;
   return links.map(({ to, label, mobileLabel, Icon, end }) => (
-    <NavLink key={to} to={to} end={end} className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>
+    <NavLink
+      key={to}
+      to={to}
+      end={end}
+      className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}
+    >
       <Icon size={mobile ? 21 : 18} aria-hidden="true" />
       <span>{mobile ? mobileLabel : label}</span>
     </NavLink>
@@ -121,12 +137,21 @@ function WorkbenchShell({ children }) {
             <span>Auto-Dig graph operator</span>
           </div>
         </div>
-        <nav aria-label="Primary navigation"><NavigationLinks /></nav>
+        <nav aria-label="Primary navigation">
+          <NavigationLinks />
+        </nav>
         <div className="sidebar-foot">
-          <div><Database size={15} /> {documents.length} documents</div>
-          <div><SyncBadge /></div>
+          <div>
+            <Database size={15} /> {documents.length} documents
+          </div>
+          <div>
+            <SyncBadge />
+          </div>
           <small>Local first · schema {autoDigBuildVersion.starIntelSchema}</small>
-          <small>fork {String(autoDigBuildVersion.quasarFork).slice(0, 12)} · upstream {String(autoDigBuildVersion.quasarUpstreamBase).slice(0, 12)}</small>
+          <small>
+            fork {String(autoDigBuildVersion.quasarFork).slice(0, 12)} · upstream{" "}
+            {String(autoDigBuildVersion.quasarUpstreamBase).slice(0, 12)}
+          </small>
         </div>
       </aside>
 
@@ -143,14 +168,35 @@ function WorkbenchShell({ children }) {
           </button>
           <form className="global-search" onSubmit={submitSearch} role="search">
             <Search size={17} aria-hidden="true" />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} aria-label="Search workspace" placeholder="Search IDs, titles, data, sources…" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              aria-label="Search workspace"
+              placeholder="Search IDs, titles, data, sources…"
+            />
           </form>
           <div className="top-actions">
             <InstallButton />
-            <button className="icon-button" disabled={!canUndo} onClick={() => undo().catch((error) => setNotice({ kind: "error", message: error.message }))} title="Undo" aria-label="Undo">
+            <button
+              className="icon-button"
+              disabled={!canUndo}
+              onClick={() =>
+                undo().catch((error) => setNotice({ kind: "error", message: error.message }))
+              }
+              title="Undo"
+              aria-label="Undo"
+            >
               <Undo2 size={18} />
             </button>
-            <button className="icon-button" disabled={!canRedo} onClick={() => redo().catch((error) => setNotice({ kind: "error", message: error.message }))} title="Redo" aria-label="Redo">
+            <button
+              className="icon-button"
+              disabled={!canRedo}
+              onClick={() =>
+                redo().catch((error) => setNotice({ kind: "error", message: error.message }))
+              }
+              title="Redo"
+              aria-label="Redo"
+            >
               <Redo2 size={18} />
             </button>
           </div>
@@ -158,8 +204,11 @@ function WorkbenchShell({ children }) {
 
         {notice && (
           <div className={`notice notice-${notice.kind || "info"}`} role="status">
+            <CircleAlert size={18} aria-hidden="true" />
             <span>{notice.message}</span>
-            <button onClick={() => setNotice(null)} aria-label="Dismiss notification">×</button>
+            <button onClick={() => setNotice(null)} aria-label="Dismiss notification">
+              ×
+            </button>
           </div>
         )}
 
@@ -179,12 +228,30 @@ function WorkbenchShell({ children }) {
 function VersionPage() {
   return (
     <section className="simple-page">
-      <div className="page-heading"><div><span className="eyebrow">Build identity</span><h1>About</h1><p>Exact versions used by this Auto-Dig build.</p></div></div>
+      <div className="page-heading">
+        <div>
+          <span className="eyebrow">Build identity</span>
+          <h1>About</h1>
+          <p>Exact versions used by this Auto-Dig build.</p>
+        </div>
+      </div>
       <dl>
-        <dt>Auto-Dig version</dt><dd><code>{autoDigBuildVersion.autoDig}</code></dd>
-        <dt>Quasar fork version</dt><dd><code>{autoDigBuildVersion.quasarFork}</code></dd>
-        <dt>Quasar upstream base commit</dt><dd><code>{autoDigBuildVersion.quasarUpstreamBase}</code></dd>
-        <dt>StarIntel schema version</dt><dd><code>{autoDigBuildVersion.starIntelSchema}</code></dd>
+        <dt>Auto-Dig version</dt>
+        <dd>
+          <code>{autoDigBuildVersion.autoDig}</code>
+        </dd>
+        <dt>Quasar fork version</dt>
+        <dd>
+          <code>{autoDigBuildVersion.quasarFork}</code>
+        </dd>
+        <dt>Quasar upstream base commit</dt>
+        <dd>
+          <code>{autoDigBuildVersion.quasarUpstreamBase}</code>
+        </dd>
+        <dt>StarIntel schema version</dt>
+        <dd>
+          <code>{autoDigBuildVersion.starIntelSchema}</code>
+        </dd>
       </dl>
     </section>
   );
@@ -194,7 +261,9 @@ function NotFound() {
   return (
     <section className="empty-state">
       <h1>Route not found</h1>
-      <NavLink className="button primary" to="/">Open research</NavLink>
+      <NavLink className="button primary" to="/">
+        Open research
+      </NavLink>
     </section>
   );
 }
@@ -211,7 +280,8 @@ export default function App() {
           <Route path="/documents/:id" element={<DocumentPage />} />
           <Route path="/documents/:id/edit" element={<DocumentEditor mode="edit" />} />
           <Route path="/import" element={<ImportPage />} />
-          <Route path="/agents" element={<AutoDigActorsPage />} />
+          <Route path="/agents" element={<Navigate to="/actors" replace />} />
+          <Route path="/actors" element={<AutoDigActorsPage />} />
           <Route path="/tipline" element={<TiplinePage />} />
           <Route path="/stats" element={<Navigate to="/" replace />} />
           <Route path="/settings" element={<SettingsPage />} />

@@ -9,7 +9,10 @@ import OperatorUiEnhancer from "../components/OperatorUiEnhancer.jsx";
 import { AutoDigProvider } from "../auto-dig/bridge/context.jsx";
 import { isAutoDigEmbedded } from "../auto-dig/bridge/client";
 import AutoDigRuntime from "../auto-dig/components/AutoDigRuntime.jsx";
-import { CorrectionActionSurface, CorrectionReportProvider } from "../auto-dig/correction-reports/CorrectionReports.jsx";
+import {
+  CorrectionActionSurface,
+  CorrectionReportProvider
+} from "../auto-dig/correction-reports/CorrectionReports.jsx";
 import { QuasarProvider } from "../store.jsx";
 import { registerServiceWorker } from "../lib/service-worker-registration.js";
 import { initializeTheme } from "../lib/themes.js";
@@ -27,6 +30,8 @@ import "../mobile-graph-empty-state.css";
 import "../graph-editors.css";
 import "../graph-editors-extra.css";
 import "../auto-dig/auto-dig.css";
+import "../agent-tab-icons.css";
+import "../kinpaku-shell.css";
 
 initializeTheme();
 
