@@ -30,6 +30,7 @@ import "../mobile-graph-empty-state.css";
 import "../graph-editors.css";
 import "../graph-editors-extra.css";
 import "../auto-dig/auto-dig.css";
+import "../agent-tab-icons.css";
 import "../kinpaku-shell.css";
 
 initializeTheme();
