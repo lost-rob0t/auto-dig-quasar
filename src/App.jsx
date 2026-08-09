@@ -14,7 +14,6 @@ import {
   Redo2,
   Search,
   Settings,
-  TableProperties,
   Undo2
 } from "lucide-react";
 import { NavLink, Navigate, Route, Routes, useNavigate } from "react-router-dom";
@@ -34,7 +33,7 @@ import { autoDigBuildVersion } from "./auto-dig/version";
 const navigation = [
   { to: "/", label: "Research", mobileLabel: "Research", Icon: Activity, end: true },
   { to: "/graph", label: "Graph", mobileLabel: "Graph", Icon: Network },
-  { to: "/documents", label: "Documents", mobileLabel: "Docs", Icon: TableProperties },
+  { to: "/documents", label: "Documents", mobileLabel: "Docs", Icon: Search },
   { to: "/documents/new", label: "Add document", Icon: FilePlus2 },
   { to: "/actors", label: "Actors", mobileLabel: "Actors", Icon: Code2 },
   { to: "/tipline", label: "Tipline", mobileLabel: "Tips", Icon: Inbox },
