@@ -1,5 +1,5 @@
 const STORAGE_KEY = "starintel-theme";
-export const DEFAULT_THEME = "midnight";
+export const DEFAULT_THEME = "black-gold";
 
 export const THEMES = Object.freeze([
   {
