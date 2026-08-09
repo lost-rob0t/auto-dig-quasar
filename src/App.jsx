@@ -48,7 +48,22 @@ function SyncBadge() {
   const { syncStatus, serverStatus, queueStatus } = useQuasar();
   return (
     <div className="connection-badges">
-      <span className={`sync-badge sync-${syncStatus.state}`} title={`CouchDB: ${syncStatus.message}`}>db {syncStatus.state}</span>
+      <span
+        className={`sync-badge sync-${syncStatus.state}`}
+        style={
+          syncStatus.state === "offline"
+            ? {
+                alignItems: "center",
+                justifyContent: "center",
+                color: "var(--danger)",
+                textAlign: "center"
+              }
+            : undefined
+        }
+        title={`CouchDB: ${syncStatus.message}`}
+      >
+        db {syncStatus.state}
+      </span>
       {serverStatus.state !== "offline" && <span className={`sync-badge sync-${serverStatus.state}`} title={serverStatus.message}>api {serverStatus.state}</span>}
       {queueStatus.state !== "offline" && <span className={`sync-badge sync-${queueStatus.state}`} title={queueStatus.message}>queue {queueStatus.state}</span>}
     </div>
