@@ -14,6 +14,7 @@ import {
   Redo2,
   Search,
   Settings,
+  Sparkles,
   TableProperties,
   Undo2
 } from "lucide-react";
@@ -131,7 +132,9 @@ function WorkbenchShell({ children }) {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand-block">
-          <div className="brand-mark">Q</div>
+          <div className="brand-mark" aria-hidden="true">
+            <Sparkles size={18} />
+          </div>
           <div>
             <strong>Quasar</strong>
             <span>Auto-Dig graph operator</span>
