@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/test";
 
-test("uses a full-screen graph canvas with three mobile controls", async ({ page }) => {
+test("uses a shell-contained graph canvas with three mobile controls", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/graph");
 
-  await expect(page.locator(".topbar")).toBeHidden();
+  await expect(page.locator(".topbar")).toBeVisible();
   await expect(page.locator(".sidebar")).toBeHidden();
   await expect(page.locator(".graph-toolbar")).toBeHidden();
   await expect(page.locator(".graph-list-panel")).toBeHidden();
@@ -64,12 +64,15 @@ test("uses a full-screen graph canvas with three mobile controls", async ({ page
   expect(emptyStateLayout.rawText).toEqual([]);
   for (const offset of emptyStateLayout.buttonCenters) expect(offset).toBeLessThanOrEqual(1);
 
-  const stage = await page.locator(".graph-stage").boundingBox();
-  expect(stage).not.toBeNull();
-  expect(stage?.x).toBe(0);
-  expect(stage?.y).toBe(0);
-  expect(stage?.width).toBe(390);
-  expect(stage?.height).toBe(844);
+  const layout = await page.evaluate(() => {
+    const topbar = document.querySelector(".topbar")?.getBoundingClientRect();
+    const stage = document.querySelector(".graph-stage")?.getBoundingClientRect();
+    return { topbar, stage, width: window.innerWidth, height: window.innerHeight };
+  });
+  expect(layout.stage?.x).toBe(0);
+  expect(layout.stage?.top).toBeGreaterThanOrEqual(layout.topbar?.bottom || 0);
+  expect(layout.stage?.width).toBe(390);
+  expect(layout.stage?.bottom).toBeLessThanOrEqual(layout.height);
 
   await page.getByRole("button", { name: "Graph tools" }).click();
   const tray = page.getByRole("menu", { name: "Graph tools" });
