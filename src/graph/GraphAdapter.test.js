@@ -22,14 +22,16 @@ describe("automaticNodePosition", () => {
     }
   });
 
-  it("reserves ordinary left drag for box selection", () => {
+  it("uses native left drag panning and single-click selection", () => {
     const cy = createGraphAdapter({
       headless: true,
       styleEnabled: false,
-      elements: []
+      elements: [],
+      selectionType: "additive"
     });
 
-    expect(cy.userPanningEnabled()).toBe(false);
+    expect(cy.userPanningEnabled()).toBe(true);
+    expect(cy.selectionType()).toBe("single");
     cy.destroy();
   });
 });
