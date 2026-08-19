@@ -2,7 +2,6 @@ const GESTURE_SCRATCH = "quasar-graph-gestures";
 const DESKTOP_DROP_PADDING = 14;
 const TOUCH_DROP_PADDING = 30;
 const DRAG_THRESHOLD_SQUARED = 36;
-const USER_NAVIGATION_GUARD_MS = 360;
 const CONTEXT_TAP_SUPPRESS_MS = 250;
 
 function distanceSquared(left, right) {
@@ -33,20 +32,6 @@ export function relationDropPadding(pointerType = "") {
   return pointerType === "touch" || pointerType === "pen"
     ? TOUCH_DROP_PADDING
     : DESKTOP_DROP_PADDING;
-}
-
-export function markUserNavigation(
-  state,
-  now = Date.now(),
-  duration = USER_NAVIGATION_GUARD_MS
-) {
-  if (!state) return 0;
-  state.userNavigationUntil = Math.max(state.userNavigationUntil || 0, now + duration);
-  return state.userNavigationUntil;
-}
-
-export function isUserNavigationActive(state, now = Date.now()) {
-  return Boolean(state && now < (state.userNavigationUntil || 0));
 }
 
 export function selectSingleNode(cy, node) {
@@ -87,19 +72,6 @@ export function selectNodesInRenderedBox(cy, box) {
   if (typeof cy.batch === "function") cy.batch(apply);
   else apply();
   return matches.map((node) => node.id());
-}
-
-export function installUserNavigationGuard(cy, state) {
-  const nativePanBy = cy.panBy.bind(cy);
-  state.nativePanBy = nativePanBy;
-  cy.panBy = (...args) => (
-    isUserNavigationActive(state) ? cy : nativePanBy(...args)
-  );
-
-  return () => {
-    cy.panBy = nativePanBy;
-    state.nativePanBy = null;
-  };
 }
 
 export function findRelationDropTarget(cy, sourceNode, padding = DESKTOP_DROP_PADDING) {
@@ -284,8 +256,6 @@ export function installGraphGestures(cy) {
     armedNodeId: null,
     drag: null,
     panningEnabled: true,
-    userNavigationUntil: 0,
-    nativePanBy: null,
     rightDrag: null,
     selectionOverlay: null,
     suppressContextTapUntil: 0,
@@ -293,7 +263,6 @@ export function installGraphGestures(cy) {
   };
   cy.scratch(GESTURE_SCRATCH, state);
 
-  const restorePanBy = installUserNavigationGuard(cy, state);
   const removeRightDragSelection = installRightDragSelection(cy, state);
 
   cy.on("tap", (event) => {
@@ -308,7 +277,6 @@ export function installGraphGestures(cy) {
   });
   cy.on("dragpan scrollzoom pinchzoom", () => {
     state.armedNodeId = null;
-    markUserNavigation(state);
   });
   cy.on("grab", "node", (event) => {
     const node = event.target;
@@ -366,7 +334,6 @@ export function installGraphGestures(cy) {
   });
   cy.on("destroy", () => {
     removeRightDragSelection();
-    restorePanBy();
   });
 
   return cy;
