@@ -104,12 +104,12 @@ test("uses a shell-contained graph canvas with three mobile controls", async ({ 
   );
 
   await page.locator(".graph-stage").click({ button: "right", position: { x: 180, y: 360 } });
-  const radial = page.locator(".graph-context-menu.canvas-actions.radial-root");
-  await expect(radial).toBeVisible();
-  await expect(radial.getByRole("menuitem", { name: /Create node/ })).toBeVisible();
-  await expect(radial.getByRole("menuitem", { name: /Graph/ })).toBeVisible();
-  await expect(radial.getByRole("menuitem", { name: /Layout/ })).toBeVisible();
-  await expect(radial.getByRole("menuitem", { name: /Ingest/ })).toBeVisible();
+  const contextMenu = page.getByRole("menu", { name: "canvas actions" });
+  await expect(contextMenu).toBeVisible();
+  await expect(contextMenu.getByRole("menuitem", { name: "Create node", exact: true })).toBeVisible();
+  await expect(contextMenu.getByRole("menuitem", { name: "Graph", exact: true })).toBeVisible();
+  await expect(contextMenu.getByRole("menuitem", { name: "Layout", exact: true })).toBeVisible();
+  await expect(contextMenu.getByRole("menuitem", { name: "Ingest", exact: true })).toBeVisible();
 });
 
 test("collapses thinking and tool output until expanded", async ({ page }) => {
