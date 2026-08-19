@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 const expectedLinks = [
   ["Research", "/"],
   ["Graph", "/graph"],
+  ["Datasets", "/datasets"],
   ["Documents", "/documents"],
   ["Add document", "/documents/new"],
   ["Actors", "/actors"],
@@ -11,8 +12,6 @@ const expectedLinks = [
   ["Settings", "/settings"],
   ["About", "/about"]
 ];
-
-const communityUrl = "https://discord.gg/R3VY8wr86Y";
 
 test("mobile menu mirrors the Auto-Dig desktop navigation", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -23,22 +22,16 @@ test("mobile menu mirrors the Auto-Dig desktop navigation", async ({ page }) => 
   const dialog = page.getByRole("dialog", { name: "Navigation" });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText("Quasar", { exact: true })).toBeVisible();
-  await expect(dialog.getByText("Auto-Dig workspace", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Auto-Dig investigation", { exact: true })).toBeVisible();
 
   const navigation = dialog.getByRole("navigation", { name: "Mobile navigation" });
-  await expect(navigation.getByRole("link")).toHaveCount(expectedLinks.length + 1);
+  await expect(navigation.getByRole("link")).toHaveCount(expectedLinks.length);
 
   for (const [label, href] of expectedLinks) {
     const link = navigation.getByRole("link", { name: label, exact: true });
     await expect(link).toBeVisible();
     await expect(link).toHaveAttribute("href", href);
   }
-
-  const community = navigation.getByRole("link", { name: "Discord", exact: true });
-  await expect(community).toBeVisible();
-  await expect(community).toHaveAttribute("href", communityUrl);
-  await expect(community).toHaveAttribute("target", "_blank");
-  await expect(community).toHaveAttribute("rel", /noopener/);
 
   await expect(navigation.getByRole("link", { name: "Settings", exact: true })).toHaveClass(
     /active/
