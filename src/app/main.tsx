@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "../App.jsx";
+import AgentDisclosureBridge from "../components/AgentDisclosureBridge.jsx";
 import GraphContextRadialBridge from "../components/GraphContextRadialBridge.jsx";
 import GraphObjectTypePickerBridge from "../components/GraphObjectTypePickerBridge.jsx";
 import MobileGraphToolTray from "../components/MobileGraphToolTray.jsx";
@@ -51,6 +52,7 @@ createRoot(rootElement).render(
           <QuasarProvider>
             <CorrectionReportProvider>
               <App />
+              <AgentDisclosureBridge />
               <AutoDigRuntime />
               <CorrectionActionSurface />
               <ProviderBrandIcons />
