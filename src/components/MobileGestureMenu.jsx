@@ -1,7 +1,8 @@
-import { ChevronRight, Redo2, Undo2, X } from "lucide-react";
+import { ChevronRight, MessageCircle, Redo2, Undo2, X } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useQuasar } from "../store";
+import { STARINTEL_COMMUNITY_URL } from "../ui-core/community";
 import { navigation } from "../ui-core/navigation";
 import { useUiRuntime } from "../ui-core/runtime";
 
@@ -68,6 +69,7 @@ export default function MobileGestureMenu({ open, onOpenChange }) {
                 const active = match(location.pathname);
                 return <Link key={to} to={to} className={active ? "mobile-gesture-link active" : "mobile-gesture-link"} aria-current={active ? "page" : undefined} onClick={() => onOpenChange(false)}><span className="mobile-gesture-link-icon"><Icon size={19} aria-hidden="true" /></span><strong>{label}</strong><ChevronRight className="mobile-gesture-link-chevron" size={16} aria-hidden="true" /></Link>;
               })}
+              <a className="mobile-gesture-link" href={STARINTEL_COMMUNITY_URL} target="_blank" rel="noopener noreferrer" onClick={() => onOpenChange(false)}><span className="mobile-gesture-link-icon"><MessageCircle size={19} aria-hidden="true" /></span><strong>Discord</strong><ChevronRight className="mobile-gesture-link-chevron" size={16} aria-hidden="true" /></a>
             </nav>
             <div className="mobile-gesture-section-label">History</div>
             <div className="mobile-gesture-actions" aria-label="History actions"><button className="button" type="button" disabled={!canUndo} onClick={() => runHistory(undo)}><Undo2 size={17} /> Undo</button><button className="button" type="button" disabled={!canRedo} onClick={() => runHistory(redo)}><Redo2 size={17} /> Redo</button></div>
