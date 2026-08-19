@@ -2,6 +2,7 @@ import cytoscape from "cytoscape";
 import edgehandles from "cytoscape-edgehandles";
 import { installGraphGestures } from "./graph-gestures";
 import { installMaltegoLayouts } from "./maltego-layouts";
+import { installUserNavigationGuard } from "./user-navigation-guard";
 
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 const AUTO_NODE_SPACING = 96;
@@ -59,6 +60,8 @@ export class GraphAdapter {
       selectionType: "single",
       userPanningEnabled: options.userPanningEnabled ?? true
     }));
+    const removeUserNavigationGuard = installUserNavigationGuard(cy);
+    cy.on("destroy", removeUserNavigationGuard);
     installAutomaticNodePlacement(cy);
     return installGraphGestures(cy);
   }
