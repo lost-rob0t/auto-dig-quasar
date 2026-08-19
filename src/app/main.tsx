@@ -26,7 +26,6 @@ import "../dashboard-theme.css";
 import "../mobile.css";
 import "../mobile-editor.css";
 import "../gesture-menu.css";
-import "../operator-ui.css";
 import "../mobile-graph-tools.css";
 import "../mobile-graph-empty-state.css";
 import "../graph-editors.css";
