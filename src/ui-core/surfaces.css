@@ -30,3 +30,8 @@
 .dataset-name:hover { color: var(--quasar-brand-strong); }
 .dataset-types { display: flex; gap: 0.25rem; flex-wrap: wrap; }
 .dataset-types span { display: inline-flex; align-items: center; min-height: 20px; padding: 0 0.38rem; border: 1px solid #2a4055; border-radius: 999px; background: #0e1c2b; color: #9fb2c4; font-size: 0.63rem; }
+.agent-log-entry.agent-log-collapsible { position: relative; cursor: pointer; }
+.agent-log-entry.agent-log-collapsible::after { content: "›"; position: absolute; top: 0.45rem; right: 0.58rem; color: #71879d; transform: rotate(90deg); transition: transform 120ms ease; }
+.agent-log-entry.agent-log-collapsible[data-expanded="false"] > :not(strong) { display: none !important; }
+.agent-log-entry.agent-log-collapsible[data-expanded="true"]::after { transform: rotate(-90deg); }
+.agent-log-entry.agent-log-collapsible:focus-visible { outline: 2px solid var(--quasar-brand); outline-offset: 2px; }
