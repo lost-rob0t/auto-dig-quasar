@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { automaticNodePosition, createGraphAdapter } from "./GraphAdapter";
+import { isGraphUserNavigationActive } from "./user-navigation-guard";
 
 const extent = { x1: -500, y1: -300, x2: 500, y2: 300 };
 
@@ -22,14 +23,30 @@ describe("automaticNodePosition", () => {
     }
   });
 
-  it("reserves ordinary left drag for box selection", () => {
+  it("uses native left drag panning and single-click selection", () => {
+    const cy = createGraphAdapter({
+      headless: true,
+      styleEnabled: false,
+      elements: [],
+      selectionType: "additive"
+    });
+
+    expect(cy.userPanningEnabled()).toBe(true);
+    expect(cy.selectionType()).toBe("single");
+    cy.destroy();
+  });
+
+  it("installs the shared navigation guard used by GraphPage", () => {
     const cy = createGraphAdapter({
       headless: true,
       styleEnabled: false,
       elements: []
     });
 
-    expect(cy.userPanningEnabled()).toBe(false);
+    expect(isGraphUserNavigationActive(cy)).toBe(false);
+    cy.emit("dragpan");
+    expect(isGraphUserNavigationActive(cy)).toBe(true);
     cy.destroy();
+    expect(isGraphUserNavigationActive(cy)).toBe(false);
   });
 });
