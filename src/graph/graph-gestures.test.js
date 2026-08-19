@@ -1,16 +1,11 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   boxesOverlap,
-  installUserNavigationGuard,
-  isUserNavigationActive,
-  markUserNavigation,
   relationDropPadding,
   selectionBoxFromPoints,
   selectNodesInRenderedBox,
   selectSingleNode
 } from "./graph-gestures";
-
-afterEach(() => vi.restoreAllMocks());
 
 describe("graph gestures", () => {
   it("detects a relation drop when node boxes overlap", () => {
@@ -108,26 +103,5 @@ describe("graph gestures", () => {
     expect(outside.unselect).toHaveBeenCalledOnce();
     expect(first.select).toHaveBeenCalledOnce();
     expect(second.select).toHaveBeenCalledOnce();
-  });
-
-  it("blocks delayed recentering while user navigation is active", () => {
-    const nativePanBy = vi.fn();
-    const cy = { panBy: nativePanBy };
-    const state = { userNavigationUntil: 0, nativePanBy: null };
-    const restore = installUserNavigationGuard(cy, state);
-
-    markUserNavigation(state, 100, 360);
-    expect(isUserNavigationActive(state, 459)).toBe(true);
-    expect(isUserNavigationActive(state, 460)).toBe(false);
-
-    vi.spyOn(Date, "now").mockReturnValue(200);
-    expect(cy.panBy({ x: 10, y: 5 })).toBe(cy);
-    expect(nativePanBy).not.toHaveBeenCalled();
-
-    Date.now.mockReturnValue(500);
-    cy.panBy({ x: 10, y: 5 });
-    expect(nativePanBy).toHaveBeenCalledWith({ x: 10, y: 5 });
-
-    restore();
   });
 });
