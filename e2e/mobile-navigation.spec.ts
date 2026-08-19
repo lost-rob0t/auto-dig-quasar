@@ -12,6 +12,8 @@ const expectedLinks = [
   ["About", "/about"]
 ];
 
+const communityUrl = "https://discord.gg/R3VY8wr86Y";
+
 test("mobile menu mirrors the Auto-Dig desktop navigation", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/settings");
@@ -24,13 +26,19 @@ test("mobile menu mirrors the Auto-Dig desktop navigation", async ({ page }) => 
   await expect(dialog.getByText("Auto-Dig workspace", { exact: true })).toBeVisible();
 
   const navigation = dialog.getByRole("navigation", { name: "Mobile navigation" });
-  await expect(navigation.getByRole("link")).toHaveCount(expectedLinks.length);
+  await expect(navigation.getByRole("link")).toHaveCount(expectedLinks.length + 1);
 
   for (const [label, href] of expectedLinks) {
     const link = navigation.getByRole("link", { name: label, exact: true });
     await expect(link).toBeVisible();
     await expect(link).toHaveAttribute("href", href);
   }
+
+  const community = navigation.getByRole("link", { name: "Discord", exact: true });
+  await expect(community).toBeVisible();
+  await expect(community).toHaveAttribute("href", communityUrl);
+  await expect(community).toHaveAttribute("target", "_blank");
+  await expect(community).toHaveAttribute("rel", /noopener/);
 
   await expect(navigation.getByRole("link", { name: "Settings", exact: true })).toHaveClass(
     /active/
