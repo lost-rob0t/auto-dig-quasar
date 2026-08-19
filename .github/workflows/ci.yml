@@ -38,8 +38,8 @@ jobs:
           test -s dist/sw.js
           test -s dist/manifest.webmanifest
           grep -q "Quasar" dist/index.html
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+      - name: Validate runner Chrome
+        run: google-chrome --version
       - run: npm run test:e2e
       - name: Upload failure diagnostics
         if: ${{ failure() }}
