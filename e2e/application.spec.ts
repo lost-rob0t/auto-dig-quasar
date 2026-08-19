@@ -21,6 +21,11 @@ test("opens the local workspace without a backend", async ({ page }) => {
   await expect(statusDialog).toBeVisible();
   await expect(statusDialog.getByText("CouchDB sync", { exact: true })).toBeVisible();
   await expect(statusDialog.getByText("offline", { exact: true }).first()).toBeVisible();
+
+  const notice = page.getByRole("status");
+  if (await notice.isVisible()) {
+    await notice.getByRole("button", { name: "Dismiss notification" }).click();
+  }
   await page.getByRole("button", { name: "Close runtime status" }).click();
 
   await expect(page.locator('link[rel="manifest"]')).toHaveAttribute("href", "/manifest.webmanifest");
