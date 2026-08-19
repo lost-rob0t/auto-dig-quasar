@@ -1,225 +1,31 @@
-import { useEffect, useState } from "react";
-import {
-  Activity,
-  CircleAlert,
-  Code2,
-  Database,
-  Download,
-  FilePlus2,
-  FolderInput,
-  Inbox,
-  Info,
-  Menu,
-  Network,
-  Redo2,
-  Search,
-  Settings,
-  Undo2
-} from "lucide-react";
-import { NavLink, Navigate, Route, Routes, useNavigate } from "react-router-dom";
-import { useQuasar } from "./store";
-import GraphPage from "./components/GraphPage";
-import GraphLayoutControl from "./components/GraphLayoutControl";
-import { DocumentPage, DocumentsPage } from "./components/Documents";
-import DocumentEditor from "./components/DocumentEditor";
-import { ImportPage, SettingsPage } from "./components/ImportSettings";
-import StatsPage from "./components/StatsPage";
+import { CircleAlert } from "lucide-react";
+import { Link, Navigate, Route, Routes, useSearchParams } from "react-router-dom";
 import { AgentBubble, AgentSystemProvider } from "./components/AgentSystem";
-import MobileGestureMenu from "./components/MobileGestureMenu";
 import AutoDigActorsPage from "./auto-dig/components/AutoDigActorsPage";
 import TiplinePage from "./auto-dig/tipline/TiplinePage";
 import { autoDigBuildVersion } from "./auto-dig/version";
+import DatasetsPage from "./components/DatasetsPage";
+import DocumentEditor from "./components/DocumentEditor";
+import { DocumentPage, DocumentsPage } from "./components/Documents";
+import GraphLayoutControl from "./components/GraphLayoutControl";
+import GraphPage from "./components/GraphPage";
+import GraphWorkspaceChrome from "./components/GraphWorkspaceChrome";
+import { ImportPage, SettingsPage } from "./components/ImportSettings";
+import StatsPage from "./components/StatsPage";
+import QuasarShell from "./ui-core/QuasarShell";
 
-const navigation = [
-  { to: "/", label: "Research", mobileLabel: "Research", Icon: Activity, end: true },
-  { to: "/graph", label: "Graph", mobileLabel: "Graph", Icon: Network },
-  { to: "/documents", label: "Documents", mobileLabel: "Docs", Icon: Search },
-  { to: "/documents/new", label: "Add document", Icon: FilePlus2 },
-  { to: "/actors", label: "Actors", mobileLabel: "Actors", Icon: Code2 },
-  { to: "/tipline", label: "Tipline", mobileLabel: "Tips", Icon: Inbox },
-  { to: "/import", label: "Import", Icon: FolderInput },
-  { to: "/settings", label: "Settings", Icon: Settings },
-  { to: "/about", label: "About", Icon: Info }
-];
-
-const mobileNavigation = navigation.filter(({ mobileLabel }) => mobileLabel);
-
-function SyncBadge() {
-  const { syncStatus, serverStatus, queueStatus } = useQuasar();
-  return (
-    <div className="connection-badges">
-      <span className={`sync-badge sync-${syncStatus.state}`} title={`CouchDB: ${syncStatus.message}`}>
-        db {syncStatus.state}
-      </span>
-      {serverStatus.state !== "offline" && (
-        <span className={`sync-badge sync-${serverStatus.state}`} title={serverStatus.message}>
-          api {serverStatus.state}
-        </span>
-      )}
-      {queueStatus.state !== "offline" && (
-        <span className={`sync-badge sync-${queueStatus.state}`} title={queueStatus.message}>
-          queue {queueStatus.state}
-        </span>
-      )}
-    </div>
-  );
+function DocumentsRoute() {
+  const [params] = useSearchParams();
+  if (params.get("group") === "dataset") return <Navigate to="/datasets" replace />;
+  return <DocumentsPage />;
 }
 
-function InstallButton() {
-  const [installPrompt, setInstallPrompt] = useState(null);
-
-  useEffect(() => {
-    function captureInstallPrompt(event) {
-      event.preventDefault();
-      setInstallPrompt(event);
-    }
-    function clearInstallPrompt() {
-      setInstallPrompt(null);
-    }
-    window.addEventListener("beforeinstallprompt", captureInstallPrompt);
-    window.addEventListener("appinstalled", clearInstallPrompt);
-    return () => {
-      window.removeEventListener("beforeinstallprompt", captureInstallPrompt);
-      window.removeEventListener("appinstalled", clearInstallPrompt);
-    };
-  }, []);
-
-  if (!installPrompt) return null;
-
-  async function install() {
-    await installPrompt.prompt();
-    await installPrompt.userChoice;
-    setInstallPrompt(null);
-  }
-
+function GraphWorkspace() {
   return (
-    <button className="button install-button" type="button" onClick={install} title="Install Quasar">
-      <Download size={17} />
-      <span>Install</span>
-    </button>
-  );
-}
-
-function NavigationLinks({ mobile = false }) {
-  const links = mobile ? mobileNavigation : navigation;
-  return links.map(({ to, label, mobileLabel, Icon, end }) => (
-    <NavLink
-      key={to}
-      to={to}
-      end={end}
-      className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}
-    >
-      <Icon size={mobile ? 21 : 18} aria-hidden="true" />
-      <span>{mobile ? mobileLabel : label}</span>
-    </NavLink>
-  ));
-}
-
-function WorkbenchShell({ children }) {
-  const navigate = useNavigate();
-  const { loading, notice, setNotice, canUndo, canRedo, undo, redo, documents } = useQuasar();
-  const [query, setQuery] = useState("");
-  const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
-
-  function submitSearch(event) {
-    event.preventDefault();
-    navigate(`/documents?q=${encodeURIComponent(query)}`);
-  }
-
-  return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <div className="brand-block">
-          <div className="brand-mark">Q</div>
-          <div>
-            <strong>Quasar</strong>
-            <span>Auto-Dig graph operator</span>
-          </div>
-        </div>
-        <nav aria-label="Primary navigation">
-          <NavigationLinks />
-        </nav>
-        <div className="sidebar-foot">
-          <div>
-            <Database size={15} /> {documents.length} documents
-          </div>
-          <div>
-            <SyncBadge />
-          </div>
-          <small>Local first · schema {autoDigBuildVersion.starIntelSchema}</small>
-          <small>
-            fork {String(autoDigBuildVersion.quasarFork).slice(0, 12)} · upstream{" "}
-            {String(autoDigBuildVersion.quasarUpstreamBase).slice(0, 12)}
-          </small>
-        </div>
-      </aside>
-
-      <section className="workbench">
-        <header className="topbar">
-          <button
-            className="icon-button mobile-menu-button"
-            type="button"
-            aria-label="Open menu"
-            aria-expanded={mobileNavigationOpen}
-            onClick={() => setMobileNavigationOpen(true)}
-          >
-            <Menu size={21} aria-hidden="true" />
-          </button>
-          <form className="global-search" onSubmit={submitSearch} role="search">
-            <Search size={17} aria-hidden="true" />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              aria-label="Search workspace"
-              placeholder="Search IDs, titles, data, sources…"
-            />
-          </form>
-          <div className="top-actions">
-            <InstallButton />
-            <button
-              className="icon-button"
-              disabled={!canUndo}
-              onClick={() =>
-                undo().catch((error) => setNotice({ kind: "error", message: error.message }))
-              }
-              title="Undo"
-              aria-label="Undo"
-            >
-              <Undo2 size={18} />
-            </button>
-            <button
-              className="icon-button"
-              disabled={!canRedo}
-              onClick={() =>
-                redo().catch((error) => setNotice({ kind: "error", message: error.message }))
-              }
-              title="Redo"
-              aria-label="Redo"
-            >
-              <Redo2 size={18} />
-            </button>
-          </div>
-        </header>
-
-        {notice && (
-          <div className={`notice notice-${notice.kind || "info"}`} role="status">
-            <CircleAlert size={18} aria-hidden="true" />
-            <span>{notice.message}</span>
-            <button onClick={() => setNotice(null)} aria-label="Dismiss notification">
-              ×
-            </button>
-          </div>
-        )}
-
-        <main className="content">
-          {loading ? <div className="loading-panel">Opening local workspace…</div> : children}
-        </main>
-      </section>
-
-      <nav className="mobile-nav" aria-label="Mobile navigation">
-        <NavigationLinks mobile />
-      </nav>
-      <MobileGestureMenu open={mobileNavigationOpen} onOpenChange={setMobileNavigationOpen} />
+    <div className="graph-workspace-host">
+      <GraphPage />
+      <GraphWorkspaceChrome />
+      <GraphLayoutControl />
     </div>
   );
 }
@@ -236,21 +42,13 @@ function VersionPage() {
       </div>
       <dl>
         <dt>Auto-Dig version</dt>
-        <dd>
-          <code>{autoDigBuildVersion.autoDig}</code>
-        </dd>
+        <dd><code>{autoDigBuildVersion.autoDig}</code></dd>
         <dt>Quasar fork version</dt>
-        <dd>
-          <code>{autoDigBuildVersion.quasarFork}</code>
-        </dd>
+        <dd><code>{autoDigBuildVersion.quasarFork}</code></dd>
         <dt>Quasar upstream base commit</dt>
-        <dd>
-          <code>{autoDigBuildVersion.quasarUpstreamBase}</code>
-        </dd>
+        <dd><code>{autoDigBuildVersion.quasarUpstreamBase}</code></dd>
         <dt>StarIntel schema version</dt>
-        <dd>
-          <code>{autoDigBuildVersion.starIntelSchema}</code>
-        </dd>
+        <dd><code>{autoDigBuildVersion.starIntelSchema}</code></dd>
       </dl>
     </section>
   );
@@ -258,11 +56,11 @@ function VersionPage() {
 
 function NotFound() {
   return (
-    <section className="empty-state">
+    <section className="empty-state page-card">
+      <CircleAlert size={30} />
       <h1>Route not found</h1>
-      <NavLink className="button primary" to="/">
-        Open research
-      </NavLink>
+      <p>The Auto-Dig workspace route does not exist.</p>
+      <Link className="button primary" to="/">Open research</Link>
     </section>
   );
 }
@@ -270,11 +68,12 @@ function NotFound() {
 export default function App() {
   return (
     <AgentSystemProvider>
-      <WorkbenchShell>
+      <QuasarShell>
         <Routes>
           <Route path="/" element={<StatsPage />} />
-          <Route path="/graph" element={<GraphPage />} />
-          <Route path="/documents" element={<DocumentsPage />} />
+          <Route path="/graph" element={<GraphWorkspace />} />
+          <Route path="/datasets" element={<DatasetsPage />} />
+          <Route path="/documents" element={<DocumentsRoute />} />
           <Route path="/documents/new" element={<DocumentEditor mode="create" />} />
           <Route path="/documents/:id" element={<DocumentPage />} />
           <Route path="/documents/:id/edit" element={<DocumentEditor mode="edit" />} />
@@ -287,9 +86,8 @@ export default function App() {
           <Route path="/about" element={<VersionPage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
-        <GraphLayoutControl />
         <AgentBubble />
-      </WorkbenchShell>
+      </QuasarShell>
     </AgentSystemProvider>
   );
 }
