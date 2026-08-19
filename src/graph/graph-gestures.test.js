@@ -5,9 +5,9 @@ import {
   isUserNavigationActive,
   markUserNavigation,
   relationDropPadding,
-  selectSingleNode,
-  shouldStartManualPan,
-  shouldStartTouchPan
+  selectionBoxFromPoints,
+  selectNodesInRenderedBox,
+  selectSingleNode
 } from "./graph-gestures";
 
 afterEach(() => vi.restoreAllMocks());
@@ -41,22 +41,14 @@ describe("graph gestures", () => {
     expect(relationDropPadding("pen")).toBe(relationDropPadding("touch"));
   });
 
-  it("leaves ordinary left drag available for box selection", () => {
-    expect(shouldStartManualPan({ pointerType: "mouse", button: 0 }, false)).toBe(false);
+  it("normalizes a right-drag rectangle in every direction", () => {
+    expect(selectionBoxFromPoints(
+      { x: 80, y: 70 },
+      { x: 20, y: 10 }
+    )).toEqual({ x1: 20, y1: 10, x2: 80, y2: 70 });
   });
 
-  it("starts manual pan for middle drag or Space plus left drag", () => {
-    expect(shouldStartManualPan({ pointerType: "mouse", button: 1 }, false)).toBe(true);
-    expect(shouldStartManualPan({ pointerType: "mouse", button: 0 }, true)).toBe(true);
-  });
-
-  it("uses native panning for touch and pen input", () => {
-    expect(shouldStartTouchPan({ pointerType: "touch" })).toBe(true);
-    expect(shouldStartTouchPan({ pointerType: "pen" })).toBe(true);
-    expect(shouldStartTouchPan({ pointerType: "mouse" })).toBe(false);
-  });
-
-  it("right-click selection replaces every other selected node", () => {
+  it("click selection replaces every other selected node", () => {
     const unselect = vi.fn();
     const select = vi.fn();
     const node = {
@@ -79,7 +71,46 @@ describe("graph gestures", () => {
     expect(select).toHaveBeenCalledOnce();
   });
 
-  it("blocks viewport recentering while user navigation is active", () => {
+  it("right-drag selects nodes overlapping the rendered box", () => {
+    const makeNode = (id, bounds, initiallySelected = false) => {
+      let selected = initiallySelected;
+      return {
+        id: () => id,
+        visible: () => true,
+        renderedBoundingBox: () => bounds,
+        selected: () => selected,
+        select: vi.fn(() => { selected = true; }),
+        unselect: vi.fn(() => { selected = false; })
+      };
+    };
+
+    const outside = makeNode("outside", { x1: 120, y1: 120, x2: 140, y2: 140 }, true);
+    const first = makeNode("first", { x1: 10, y1: 10, x2: 30, y2: 30 });
+    const second = makeNode("second", { x1: 45, y1: 45, x2: 70, y2: 70 });
+    const nodes = [outside, first, second];
+    const cy = {
+      nodes: () => nodes,
+      $: vi.fn(() => ({
+        get length() { return nodes.filter((node) => node.selected()).length; },
+        unselect: () => nodes.filter((node) => node.selected()).forEach((node) => node.unselect())
+      })),
+      batch: vi.fn((callback) => callback())
+    };
+
+    const selectedIds = selectNodesInRenderedBox(cy, {
+      x1: 0,
+      y1: 0,
+      x2: 60,
+      y2: 60
+    });
+
+    expect(selectedIds).toEqual(["first", "second"]);
+    expect(outside.unselect).toHaveBeenCalledOnce();
+    expect(first.select).toHaveBeenCalledOnce();
+    expect(second.select).toHaveBeenCalledOnce();
+  });
+
+  it("blocks delayed recentering while user navigation is active", () => {
     const nativePanBy = vi.fn();
     const cy = { panBy: nativePanBy };
     const state = { userNavigationUntil: 0, nativePanBy: null };
