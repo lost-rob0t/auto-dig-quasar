@@ -5,6 +5,7 @@ import {
   Code2,
   Database,
   Menu,
+  MessageCircle,
   Plus,
   Redo2,
   Search,
@@ -14,6 +15,7 @@ import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import MobileGestureMenu from "../components/MobileGestureMenu";
 import { useQuasar } from "../store";
+import { STARINTEL_COMMUNITY_URL } from "./community";
 import { navigation } from "./navigation";
 import StatusCenter from "./StatusCenter";
 import { useUiRuntime } from "./runtime";
@@ -102,6 +104,7 @@ export default function QuasarShell({ children }) {
         <nav aria-label="Primary navigation"><NavigationLinks pathname={location.pathname} /></nav>
         {graphRoute && <SidebarGraphs graphs={graphs} activeGraph={activeGraph} switchGraph={switchGraph} createGraph={createGraph} />}
         <div className="sidebar-foot">
+          <a className="nav-link sidebar-community-link" href={STARINTEL_COMMUNITY_URL} target="_blank" rel="noopener noreferrer" title="Join StarIntel Discord"><MessageCircle size={17} aria-hidden="true" /><span>Discord</span></a>
           <div className="sidebar-corpus-count"><Database size={14} /><span>{documents.length.toLocaleString()} documents</span></div>
           <div className="sidebar-runtime-label">{runtime.label}</div>
         </div>
