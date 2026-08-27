@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { stateDb, watchDocuments } from "../../lib/db";
+import { syncDatasetScopeToCurrentUrl } from "../../lib/dataset-url-scope";
 import { applyTheme } from "../../lib/themes";
 import { useQuasar } from "../../store";
 import { useAutoDig } from "../bridge/context";
@@ -35,6 +36,11 @@ export default function AutoDigRuntime() {
   const navigate = useNavigate();
   const loadedDataset = useRef("");
   const pendingHostWrites = useRef(new Map());
+
+  useEffect(() => {
+    if (!connected || !datasetId) return;
+    syncDatasetScopeToCurrentUrl(datasetId);
+  }, [connected, datasetId]);
 
   const queueHostWrites = useCallback((documents) => {
     for (const id of documentIds(documents)) {

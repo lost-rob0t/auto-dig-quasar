@@ -28,6 +28,34 @@ export function datasetScopeFromUrls(urls = {}) {
   return datasetSelectionFromUrls(urls).dataset;
 }
 
+export function urlWithDatasetScope(href, datasetId) {
+  const url = new URL(href);
+  const dataset = String(datasetId || "").trim();
+  if (dataset) url.searchParams.set("dataset", dataset);
+  else url.searchParams.delete("dataset");
+  return url;
+}
+
+export function syncDatasetScopeToCurrentUrl(datasetId, runtime = {}) {
+  const location = runtime.location || globalThis.location;
+  const history = runtime.history || globalThis.history;
+  const dispatchEvent = runtime.dispatchEvent || globalThis.dispatchEvent?.bind(globalThis);
+  const createEvent = runtime.createEvent || ((state) => {
+    const EventType = globalThis.PopStateEvent || globalThis.Event;
+    return EventType ? new EventType("popstate", { state }) : null;
+  });
+
+  if (!location?.href || typeof history?.replaceState !== "function") return false;
+  const current = new URL(location.href);
+  const next = urlWithDatasetScope(current.href, datasetId);
+  if (next.href === current.href) return false;
+
+  history.replaceState(history.state, "", `${next.pathname}${next.search}${next.hash}`);
+  const event = createEvent(history.state);
+  if (event && typeof dispatchEvent === "function") dispatchEvent(event);
+  return true;
+}
+
 export function currentDatasetSelection() {
   return datasetSelectionFromUrls({
     search: globalThis.location?.search || "",
