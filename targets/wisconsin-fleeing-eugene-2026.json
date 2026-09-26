@@ -1,0 +1,127 @@
+{
+  "schema_version": "0.9.0",
+  "dataset": "wisconsin-fleeing-eugene-2026",
+  "documents": [
+    {
+      "_id": "target:youtube:B4LcmE1Oea8",
+      "dtype": "target",
+      "dataset": "wisconsin-fleeing-eugene-2026",
+      "data": {
+        "actor": "youtube",
+        "target": "https://www.youtube.com/watch?v=B4LcmE1Oea8",
+        "delay": 1,
+        "recurring": false,
+        "options": []
+      },
+      "extensions": {
+        "starintel.investigation.v1": {
+          "purpose": "Preserve source metadata, description, channel, linked original bodycam source, captions, and public provenance.",
+          "source_kind": "public-youtube",
+          "observed_title": "Wisconsin Cops Don't Mess Around With This Convicted Felon",
+          "published_at": "2026-05-06"
+        }
+      }
+    },
+    {
+      "_id": "investigation-target:person:wisconsin-eugene-unresolved",
+      "dtype": "investigation-target",
+      "dataset": "wisconsin-fleeing-eugene-2026",
+      "data": {
+        "actor": "web",
+        "target": "Eugene Wisconsin felony fleeing eluding first degree reckless endangering safety possession with intent fentanyl designer drugs",
+        "delay": 1,
+        "recurring": false,
+        "options": []
+      },
+      "extensions": {
+        "starintel.investigation.v1": {
+          "entity_kind": "person",
+          "identity_status": "unresolved",
+          "known_first_name": "Eugene",
+          "do_not_merge_without": [
+            "official charging/court record",
+            "law-enforcement release naming defendant",
+            "two independent high-quality public sources"
+          ],
+          "observed_facts": [
+            "traffic stop in Wisconsin",
+            "driver identified as registered owner over radio",
+            "vehicle fled at high speed and later crashed",
+            "suspect apprehended after leaving vehicle",
+            "video narration reports charges including first-degree reckless endangering safety, fleeing/eluding, possession with intent fentanyl, and possession with intent designer drugs"
+          ],
+          "source_urls": [
+            "https://www.youtube.com/watch?v=B4LcmE1Oea8"
+          ],
+          "depth": 2,
+          "jurisdiction_hypothesis": {
+            "agency": "Fond du Lac County Sheriff's Office",
+            "confidence": "high",
+            "basis": [
+              "Transcript names Deputy Galligan; official Fond du Lac County staff directory lists Bo Galligan as Patrol Deputy.",
+              "Transcript names Birkholz and depicts a K-9 handler; official Fond du Lac County staff directory lists a Birkholz as Patrol Deputy / K-9 Handler.",
+              "Transcript radio/geography references I-41, Winnebago and Calumet, consistent with the Fond du Lac County corridor."
+            ]
+          },
+          "depth2_sources": [
+            "https://www.fdlsheriff.com/how-do-i/find-a-staff-member",
+            "https://www.fdlsheriff.com/how-do-i/find-a-staff-member/-npage-2",
+            "https://www.nbc26.com/fonddulac/kaukauna-man-arrested-after-multi-county-police-chase-on-i-41",
+            "https://www.wbay.com/2025/08/16/one-person-custody-after-high-speed-chase-i-41/"
+          ],
+          "negative_matches": [
+            "Do not merge Eugene B. Jackson solely because he is a Fond du Lac-area Eugene with fentanyl cases; no source found ties him to the seed pursuit.",
+            "Do not merge Eugene Jamal Leggette from wanted-person lists; the available record does not match the seed charge pattern."
+          ]
+        }
+      }
+    },
+    {
+      "_id": "target:web:wisconsin-eugene-case-resolution",
+      "dtype": "target",
+      "dataset": "wisconsin-fleeing-eugene-2026",
+      "data": {
+        "actor": "web",
+        "target": "\"Eugene\" Wisconsin \"first degree reckless endangering safety\" fleeing fentanyl",
+        "delay": 1,
+        "recurring": false,
+        "options": []
+      },
+      "extensions": {
+        "starintel.investigation.v1": {
+          "purpose": "Resolve surname, incident date, agency, county, case number, and official disposition from public records."
+        }
+      }
+    },
+    {
+      "_id": "target:web:fdl-official-case-resolution",
+      "dtype": "target",
+      "dataset": "wisconsin-fleeing-eugene-2026",
+      "data": {
+        "actor": "web",
+        "target": "Fond du Lac County Sheriff Eugene fleeing eluding fentanyl designer drugs Birkholz Galligan",
+        "delay": 1,
+        "recurring": false,
+        "options": []
+      },
+      "extensions": {
+        "starintel.investigation.v1": {
+          "depth": 2,
+          "purpose": "Search Fond du Lac County official releases, DA/court materials, and local-news mirrors for the exact pursuit using officer names, charge pattern, and corridor anchors.",
+          "required_match": [
+            "Eugene or independently resolved legal name",
+            "Fond du Lac County Sheriff involvement",
+            "fleeing/eluding",
+            "first-degree reckless endangering safety",
+            "fentanyl or designer-drug evidence"
+          ],
+          "reject_on": [
+            "first-name-only match",
+            "charge-pattern mismatch",
+            "different agency/jurisdiction"
+          ]
+        }
+      }
+    }
+  ]
+}
