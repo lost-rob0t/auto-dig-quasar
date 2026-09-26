@@ -1,0 +1,77 @@
+{
+  "schema_version": "0.9.0",
+  "dataset": "wisconsin-fleeing-eugene-2026",
+  "documents": [
+    {
+      "_id": "target:youtube:B4LcmE1Oea8",
+      "dtype": "target",
+      "dataset": "wisconsin-fleeing-eugene-2026",
+      "data": {
+        "actor": "youtube",
+        "target": "https://www.youtube.com/watch?v=B4LcmE1Oea8",
+        "delay": 1,
+        "recurring": false,
+        "options": []
+      },
+      "extensions": {
+        "starintel.investigation.v1": {
+          "purpose": "Preserve source metadata, description, channel, linked original bodycam source, captions, and public provenance.",
+          "source_kind": "public-youtube",
+          "observed_title": "Wisconsin Cops Don't Mess Around With This Convicted Felon",
+          "published_at": "2026-05-06"
+        }
+      }
+    },
+    {
+      "_id": "investigation-target:person:wisconsin-eugene-unresolved",
+      "dtype": "investigation-target",
+      "dataset": "wisconsin-fleeing-eugene-2026",
+      "data": {
+        "actor": "web",
+        "target": "Eugene Wisconsin felony fleeing eluding first degree reckless endangering safety possession with intent fentanyl designer drugs",
+        "delay": 1,
+        "recurring": false,
+        "options": []
+      },
+      "extensions": {
+        "starintel.investigation.v1": {
+          "entity_kind": "person",
+          "identity_status": "unresolved",
+          "known_first_name": "Eugene",
+          "do_not_merge_without": [
+            "official charging/court record",
+            "law-enforcement release naming defendant",
+            "two independent high-quality public sources"
+          ],
+          "observed_facts": [
+            "traffic stop in Wisconsin",
+            "driver identified as registered owner over radio",
+            "vehicle fled at high speed and later crashed",
+            "suspect apprehended after leaving vehicle",
+            "video narration reports charges including first-degree reckless endangering safety, fleeing/eluding, possession with intent fentanyl, and possession with intent designer drugs"
+          ],
+          "source_urls": [
+            "https://www.youtube.com/watch?v=B4LcmE1Oea8"
+          ]
+        }
+      }
+    },
+    {
+      "_id": "target:web:wisconsin-eugene-case-resolution",
+      "dtype": "target",
+      "dataset": "wisconsin-fleeing-eugene-2026",
+      "data": {
+        "actor": "web",
+        "target": "\"Eugene\" Wisconsin \"first degree reckless endangering safety\" fleeing fentanyl",
+        "delay": 1,
+        "recurring": false,
+        "options": []
+      },
+      "extensions": {
+        "starintel.investigation.v1": {
+          "purpose": "Resolve surname, incident date, agency, county, case number, and official disposition from public records."
+        }
+      }
+    }
+  ]
+}
