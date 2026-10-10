@@ -34,7 +34,9 @@ async function request(configuration, path, options = {}) {
   }
   if (!response.ok) {
     const message = body?.message || body?.msg || `${response.status} ${response.statusText}`;
-    throw new Error(`StarIntel server: ${message}`);
+    const failure = new Error(`StarIntel server: ${message}`);
+    failure.status = response.status;
+    throw failure;
   }
   return body;
 }
@@ -44,6 +46,8 @@ export async function probeStarIntelServer(configuration) {
     const capabilities = await request(configuration, "/api/v1/capabilities");
     return { mode: "v1", capabilities };
   } catch (error) {
+    // Downgrade only when the v1 discovery endpoint actually does not exist.
+    if (error.status !== 404) throw error;
     const legacy = await request(configuration, "/");
     return {
       mode: "legacy",
@@ -64,16 +68,49 @@ export async function probeStarIntelServer(configuration) {
 export async function submitTargetToServer(configuration, target) {
   const document = assertDocument(target);
   if (document.dtype !== "target") throw new Error("Only target documents can be submitted as targets");
-  const actor = document.data?.actor;
-  if (!actor) throw new Error("Target actor is required");
+  // The authenticated 0.10.1 endpoint accepts a narrow command, not a
+  // historical Target document. Retain the source document for legacy fallback.
+  const data = document.data || {};
+  const actor = data.actor;
+  if (typeof actor !== "string" || !actor.trim()) throw new Error("Target actor is required");
+  if (typeof data.target !== "string" || !data.target.trim()) {
+    throw new Error("Target subject is required");
+  }
+  if (typeof document.dataset !== "string" || !document.dataset.trim()) {
+    throw new Error("Target dataset is required");
+  }
+  if (typeof document._id !== "string" || !document._id.trim()) {
+    throw new Error("Target idempotency key is required");
+  }
+  const command = {
+    actor,
+    target: data.target,
+    dataset: document.dataset,
+    idempotency_key: document._id
+  };
+  if (data.options != null) {
+    if (Array.isArray(data.options)) {
+      // 0.9 permitted arbitrary arrays; 0.10.1 requires an object.
+      // An empty array means no options. Never guess how to map a nonempty one.
+      if (data.options.length) {
+        throw new TypeError("Nonempty legacy Target options require an explicit v1 object migration");
+      }
+    } else if (typeof data.options === "object") {
+      command.options = data.options;
+    } else {
+      throw new TypeError("Target options must be a JSON object");
+    }
+  }
+  if (data.delay != null && data.delay !== 0) command.delay = data.delay;
+  if (data.recurring != null) command.recurring = data.recurring;
   try {
     return await request(configuration, "/api/v1/targets", {
       method: "POST",
-      headers: { "Idempotency-Key": document._id },
-      body: JSON.stringify(document)
+      body: JSON.stringify(command)
     });
   } catch (error) {
-    if (!/404|not found/i.test(error.message)) throw error;
+    // Never trust response text to decide whether a fallback write is allowed.
+    if (error.status !== 404) throw error;
     return request(configuration, `/new/target/${encodeURIComponent(actor)}`, {
       method: "POST",
       body: JSON.stringify(document)
