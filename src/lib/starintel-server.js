@@ -1,4 +1,5 @@
-import { assertDocument } from "starintel_doc";
+import legacy from "starintel_doc";
+const { assertDocument } = legacy;
 import canonical from "starintel_canonical/canonical";
 
 function serverUrl(configuration, path = "") {
