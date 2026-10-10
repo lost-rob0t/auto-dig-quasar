@@ -28,8 +28,9 @@ Canonical submission never falls back on HTTP or network failure: an application
 404 may mean an actor is missing, rather than that v1 is unsupported.
 
 Historical local documents use `submitLegacyTargetToServer`, retaining the
-existing v0.9 request and HTTP-status-only compatibility fallback from PR #52.
-This does not claim that a current canonical server accepts the old v0.9 payload.
+historical-to-v1 scheduling projection and HTTP-status-only compatibility fallback
+from PR #52. Nonempty legacy option arrays require explicit migration; no private
+mapping is invented.
 New canonical callers should pass a canonical Target directly and consume the
 server receipt, without saving it through v0.9 local document operations.
 
