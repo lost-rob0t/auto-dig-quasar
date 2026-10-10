@@ -29,18 +29,82 @@ describe("starintel-server client", () => {
     });
   });
 
-  it("submits a v0.9 target through the v1 endpoint", async () => {
-    const fetch = vi.fn().mockResolvedValue(new Response("{}", { status: 202 }));
+  it("projects a historical target into the narrow authenticated 0.10.1 v1 request", async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response("{}", { status: 201 }));
     vi.stubGlobal("fetch", fetch);
     const target = createDocument("target", {
       dataset: "test",
       data: { actor: "actor-1", target: "starintel:person:one" }
     });
 
-    await submitTargetToServer({ serverUrl: "http://localhost:5000" }, target);
+    await submitTargetToServer({ serverUrl: "http://localhost:5000", serverToken: "test-token" }, target);
 
+    expect(fetch).toHaveBeenCalledTimes(1);
     expect(fetch.mock.calls[0][0]).toBe("http://localhost:5000/api/v1/targets");
-    expect(fetch.mock.calls[0][1].headers.get("Idempotency-Key")).toBe(target._id);
+    const options = fetch.mock.calls[0][1];
+    expect(options.headers.get("Authorization")).toBe("Bearer test-token");
+    expect(options.headers.get("Idempotency-Key")).toBeNull();
+    expect(options.headers.get("Content-Type")).toBe("application/json");
+    expect(JSON.parse(options.body)).toEqual({
+      actor: "actor-1",
+      target: "starintel:person:one",
+      dataset: "test",
+      idempotency_key: target._id
+    });
+  });
+
+  it("preserves positive scheduling delay and false recurring", async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response("{}", { status: 201 }));
+    vi.stubGlobal("fetch", fetch);
+    const target = createDocument("target", {
+      dataset: "test", data: {
+        actor: "actor-1", target: "starintel:person:one",
+        delay: 5, recurring: false, options: []
+      }
+    });
+    await submitTargetToServer({ serverUrl: "http://localhost:5000" }, target);
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({
+      actor: "actor-1", target: "starintel:person:one", dataset: "test",
+      idempotency_key: target._id, delay: 5, recurring: false
+    });
+  });
+
+  it("omits historical zero delay and empty options instead of sending invalid v1 fields", async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response("{}", { status: 201 }));
+    vi.stubGlobal("fetch", fetch);
+    const target = createDocument("target", {
+      dataset: "test", data: { actor: "actor-1", target: "subject-1", delay: 0, options: [] }
+    });
+    await submitTargetToServer({ serverUrl: "http://localhost:5000" }, target);
+    const body = JSON.parse(fetch.mock.calls[0][1].body);
+    expect(body).not.toHaveProperty("delay");
+    expect(body).not.toHaveProperty("options");
+  });
+
+  it("rejects nonempty historical option arrays rather than inventing an object mapping", async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    const target = createDocument("target", {
+      dataset: "test", data: {
+        actor: "actor-1", target: "subject-1", options: [{ scope: "example" }]
+      }
+    });
+    await expect(submitTargetToServer({ serverUrl: "http://localhost:5000" }, target))
+      .rejects.toThrow("Nonempty legacy Target options require an explicit v1 object migration");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("never retries an invalid target command after a 422 response", async () => {
+    const fetch = vi.fn().mockResolvedValueOnce(new Response(
+      JSON.stringify({ message: "invalid_target_options" }), { status: 422 }
+    ));
+    vi.stubGlobal("fetch", fetch);
+    const target = createDocument("target", {
+      dataset: "test", data: { actor: "actor-1", target: "subject-1" }
+    });
+    await expect(submitTargetToServer({ serverUrl: "http://localhost:5000" }, target))
+      .rejects.toThrow("invalid_target_options");
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it("never downgrades v1 capability discovery on an authentication rejection", async () => {
@@ -89,5 +153,6 @@ describe("starintel-server client", () => {
       .resolves.toEqual({});
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(fetch.mock.calls[1][0]).toBe("http://localhost:5000/new/target/actor-1");
+    expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual(target);
   });
 });
