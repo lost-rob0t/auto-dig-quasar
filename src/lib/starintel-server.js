@@ -34,7 +34,9 @@ async function request(configuration, path, options = {}) {
   }
   if (!response.ok) {
     const message = body?.message || body?.msg || `${response.status} ${response.statusText}`;
-    throw new Error(`StarIntel server: ${message}`);
+    const failure = new Error(`StarIntel server: ${message}`);
+    failure.status = response.status;
+    throw failure;
   }
   return body;
 }
@@ -44,6 +46,8 @@ export async function probeStarIntelServer(configuration) {
     const capabilities = await request(configuration, "/api/v1/capabilities");
     return { mode: "v1", capabilities };
   } catch (error) {
+    // Downgrade only when the v1 discovery endpoint actually does not exist.
+    if (error.status !== 404) throw error;
     const legacy = await request(configuration, "/");
     return {
       mode: "legacy",
@@ -73,7 +77,8 @@ export async function submitTargetToServer(configuration, target) {
       body: JSON.stringify(document)
     });
   } catch (error) {
-    if (!/404|not found/i.test(error.message)) throw error;
+    // Never trust response text to decide whether a fallback write is allowed.
+    if (error.status !== 404) throw error;
     return request(configuration, `/new/target/${encodeURIComponent(actor)}`, {
       method: "POST",
       body: JSON.stringify(document)

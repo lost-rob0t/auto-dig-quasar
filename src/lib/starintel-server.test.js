@@ -42,4 +42,52 @@ describe("starintel-server client", () => {
     expect(fetch.mock.calls[0][0]).toBe("http://localhost:5000/api/v1/targets");
     expect(fetch.mock.calls[0][1].headers.get("Idempotency-Key")).toBe(target._id);
   });
+
+  it("never downgrades v1 capability discovery on an authentication rejection", async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ message: "not found" }), { status: 401 }))
+      .mockResolvedValueOnce(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetch);
+    await expect(probeStarIntelServer({ serverUrl: "http://localhost:5000" }))
+      .rejects.toThrow("not found");
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("never downgrades capability discovery on network errors", async () => {
+    const fetch = vi.fn().mockRejectedValueOnce(new TypeError("connection refused"))
+      .mockResolvedValueOnce(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetch);
+    await expect(probeStarIntelServer({ serverUrl: "http://localhost:5000" }))
+      .rejects.toThrow("connection refused");
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("never resubmits rejected targets on a misleading 403 or 500 body", async () => {
+    for (const status of [403, 500]) {
+      const fetch = vi.fn()
+        .mockResolvedValueOnce(new Response(JSON.stringify({ message: "404 not found" }), { status }))
+        .mockResolvedValueOnce(new Response("{}", { status: 202 }));
+      vi.stubGlobal("fetch", fetch);
+      const target = createDocument("target", {
+        dataset: "test", data: { actor: "actor-1", target: "subject-1" }
+      });
+      await expect(submitTargetToServer({ serverUrl: "http://localhost:5000" }, target))
+        .rejects.toThrow("404 not found");
+      expect(fetch).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("preserves explicit 404 compatibility even when the body says something else", async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ message: "different wording" }), { status: 404 }))
+      .mockResolvedValueOnce(new Response("{}", { status: 202 }));
+    vi.stubGlobal("fetch", fetch);
+    const target = createDocument("target", {
+      dataset: "test", data: { actor: "actor-1", target: "subject-1" }
+    });
+    await expect(submitTargetToServer({ serverUrl: "http://localhost:5000" }, target))
+      .resolves.toEqual({});
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls[1][0]).toBe("http://localhost:5000/new/target/actor-1");
+  });
 });
