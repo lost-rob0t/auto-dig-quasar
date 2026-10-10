@@ -1,0 +1,48 @@
+name: Canonical Target server contract
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  server-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Record exact consumer revision
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Emit the actual client request
+        run: node scripts/check-canonical-target-server.mjs emit "$RUNNER_TEMP/quasar-request.json"
+      - uses: actions/checkout@v6
+        with:
+          repository: lost-rob0t/starintel-server
+          ref: bf400c232b2bb87c080203e0f8face44cd4ae3cc
+          path: server-contract
+          persist-credentials: false
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+      - name: Execute pinned server parsing and Target construction
+        env:
+          QUASAR_REQUEST_PATH: ${{ runner.temp }}/quasar-request.json
+          QUASAR_DOCUMENT_PATH: ${{ runner.temp }}/quasar-document.json
+        run: |
+          test "$(git -C server-contract rev-parse HEAD)" = bf400c232b2bb87c080203e0f8face44cd4ae3cc
+          nix develop ./server-contract --command sbcl --non-interactive --no-userinit --no-sysinit --load "$GITHUB_WORKSPACE/scripts/check-canonical-target-server.lisp"
+      - name: Validate canonical response with maintained SDK
+        run: node scripts/check-canonical-target-server.mjs verify "$RUNNER_TEMP/quasar-document.json"

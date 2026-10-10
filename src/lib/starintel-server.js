@@ -1,4 +1,6 @@
-import { assertDocument } from "starintel_doc";
+import legacy from "starintel_doc";
+const { assertDocument } = legacy;
+import canonical from "starintel_canonical/canonical";
 
 function serverUrl(configuration, path = "") {
   const base = String(configuration?.serverUrl || "").trim().replace(/\/+$/, "");
@@ -65,7 +67,7 @@ export async function probeStarIntelServer(configuration) {
   }
 }
 
-export async function submitTargetToServer(configuration, target) {
+export async function submitLegacyTargetToServer(configuration, target) {
   const document = assertDocument(target);
   if (document.dtype !== "target") throw new Error("Only target documents can be submitted as targets");
   // The authenticated 0.10.1 endpoint accepts a narrow command, not a
@@ -119,3 +121,32 @@ export async function submitTargetToServer(configuration, target) {
 }
 
 export const starIntelServerInternals = Object.freeze({ serverUrl, authorization });
+
+/**
+ * Schedule a canonical Target using the server's command API. The server owns
+ * the persisted target ID; target.id is the stable client idempotency key.
+ * Legacy local documents stay on their explicitly named compatibility path.
+ */
+export async function submitTargetToServer(configuration, target) {
+  if (!Object.hasOwn(target || {}, "schemaVersion")) {
+    return submitLegacyTargetToServer(configuration, target);
+  }
+  const document = canonical.assertDocument(target);
+  if (document.dtype !== "target") throw new Error("Only target documents can be submitted as targets");
+  const body = {
+    actor: document.actor,
+    target: document.target,
+    dataset: document.dataset,
+    idempotency_key: document.id
+  };
+  for (const field of ["options", "delay", "recurring"]) {
+    if (Object.hasOwn(document, field)) body[field] = document[field];
+  }
+  // A v1 application 404 (for example an unknown actor) is not proof that the
+  // endpoint is absent. Canonical requests must never retry a legacy write.
+  return request(configuration, "/api/v1/targets", {
+    method: "POST",
+    headers: { "Idempotency-Key": document.id },
+    body: canonical.stringifyJson(body)
+  });
+}
