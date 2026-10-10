@@ -36,3 +36,16 @@ server receipt, without saving it through v0.9 local document operations.
 
 Server contract reference:
 https://github.com/lost-rob0t/starintel-server/blob/master/source/frontends/http-target-v1.lisp
+
+## Cross-repository contract gate
+
+The Canonical Target server contract workflow emits the actual client request,
+executes the HTTP JSON parser and Target constructor from server revision
+`bf400c232b2bb87c080203e0f8face44cd4ae3cc`, and validates the returned document
+with the maintained SDK. It checks principal-bound idempotency, flat canonical
+shape, false/null options, and an exact integer beyond the JavaScript safe range.
+
+Only fetch transport is intercepted to capture request bytes. The server parser,
+constructor and generated document validation are real. This gate does not start
+a listening HTTP server or CouchDB/RabbitMQ, and does not prove authenticated
+HTTP dispatch, persistence, recovery or deployment.
